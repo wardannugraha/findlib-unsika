@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Admin - FindLib UNSIKA</title>
+  <link rel="icon" type="image/png" href="/images/unsika.png">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+
+<body style="background: #F1F5F9;">
+
+  <div class="admin-layout-wrapper">
+
+    <!-- BACKDROP UNTUK MOBILE DRAWER -->
+    <div class="sidebar-mobile-backdrop" id="sidebarMobileBackdrop" onclick="toggleAdminSidebar(false)"></div>
+
+    <!-- SIDEBAR BUKA-TUTUP (COLLAPSIBLE SIDEBAR) -->
+    <aside class="admin-sidebar" id="adminSidebar">
+      <div class="sidebar-header">
+        <img src="/images/unsika.png" alt="Logo UNSIKA" class="sidebar-logo">
+        <div class="sidebar-brand-text">
+          <span class="sidebar-brand-title">FindLib UNSIKA</span>
+          <span class="sidebar-brand-sub">Admin & Sirkulasi</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="javascript:void(0)" class="sidebar-nav-item active" id="navItemBooks"
+          onclick="switchAdminSection('books')" title="Koleksi Buku">
+          <i class="fa-solid fa-book sidebar-nav-icon"></i>
+          <span class="sidebar-nav-text">Koleksi Buku</span>
+        </a>
+        <a href="javascript:void(0)" class="sidebar-nav-item" id="navItemLoans" onclick="switchAdminSection('loans')"
+          title="Peminjaman Buku">
+          <i class="fa-solid fa-hand-holding-hand sidebar-nav-icon"></i>
+          <span class="sidebar-nav-text">Peminjaman Buku</span>
+        </a>
+        <a href="javascript:void(0)" class="sidebar-nav-item" id="navItemOverdue"
+          onclick="switchAdminSection('overdue')" title="Buku Terlambat">
+          <i class="fa-solid fa-triangle-exclamation sidebar-nav-icon" style="color: #EF4444;"></i>
+          <span class="sidebar-nav-text">Buku Terlambat</span>
+          <span class="sidebar-badge" id="sidebarOverdueCount">0</span>
+        </a>
+        <a href="javascript:void(0)" class="sidebar-nav-item" id="navItemMembers"
+          onclick="switchAdminSection('members')" title="Data Mahasiswa">
+          <i class="fa-solid fa-users sidebar-nav-icon"></i>
+          <span class="sidebar-nav-text">Data Mahasiswa</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <a href="javascript:void(0)" class="sidebar-nav-item" id="navItemSettings"
+          onclick="switchAdminSection('settings')" title="Pengaturan Sistem">
+          <i class="fa-solid fa-sliders sidebar-nav-icon"></i>
+          <span class="sidebar-nav-text">Pengaturan Sistem</span>
+        </a>
+        <div class="sidebar-footer-text"
+          style="font-size: 0.75rem; color: #94A3B8; padding: 6px 4px 0 4px; border-top: 1px solid rgba(255, 255, 255, 0.06);">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <span
+              style="width: 7px; height: 7px; border-radius: 50%; background: #10B981; display: inline-block;"></span>
+            <span style="color: #E2E8F0; font-weight: 600;">Neon PostgreSQL</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span
+              style="width: 7px; height: 7px; border-radius: 50%; background: #38BDF8; display: inline-block;"></span>
+            <span style="color: #E2E8F0; font-weight: 600;">MQTT HiveMQ</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div class="admin-main-wrap">
+
+      <!-- TOP HEADER -->
+      <header class="admin-top-header">
+        <div class="top-header-left">
+          <button class="toggle-sidebar-btn" onclick="toggleAdminSidebar()" title="Buka/Tutup Sidebar (Ctrl + B)">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <div>
+            <h1 class="top-page-title" id="adminTopTitle">Manajemen Koleksi Buku</h1>
+          </div>
+        </div>
+
+        <div class="top-header-right" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <!-- SAKLAR MASTER MODE DEMO IOT (SIDANG / PRESENTASI) -->
+          <div id="demoModeTopToggleWrap" style="display: flex; align-items: center; background: #FFFFFF; border: 1.5px solid #E2E8F0; padding: 5px 12px; border-radius: 30px; gap: 8px; box-shadow: var(--shadow-sm);">
+            <span style="font-size: 0.8rem; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-microchip" id="demoModeIcon" style="color: #64748B;"></i> Mode Demo IoT:
+            </span>
+            <button type="button" id="btnToggleDemoMode" onclick="handleToggleDemoMode()" class="badge-demo-toggle off" title="Klik untuk mengaktifkan / menonaktifkan filter khusus buku demo rak fisik">
+              <span id="demoModeIndicator" style="width: 8px; height: 8px; border-radius: 50%; background: #94A3B8; display: inline-block;"></span>
+              <span id="demoModeText">OFF (Semua Buku)</span>
+            </button>
+          </div>
+
+          <a href="/kiosk" target="_blank" class="btn-secondary"
+            style="font-size: 0.85rem; padding: 7px 14px; text-decoration: none;">
+            <i class="fa-solid fa-desktop" style="color: #0284C7;"></i> Buka Mode Kiosk
+          </a>
+          <button onclick="handleLogout()" class="btn-danger" style="font-size: 0.85rem; padding: 7px 14px;">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i> Keluar
+          </button>
+        </div>
+      </header>
+
+      <!-- ======================================================================
+           SECTION 1: KOLEKSI BUKU
+           ====================================================================== -->
+      <section class="admin-view-section active" id="sectionBooks">
+        <!-- 4 KARTU STATISTIK BERSIH -->
+        <div class="admin-stats-grid">
+          <div class="stat-card">
+            <div class="stat-label"><i class="fa-solid fa-book" style="color: #0284C7;"></i> Total Judul Koleksi</div>
+            <div class="stat-num" id="statTotalBooks">0 Judul</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label"><i class="fa-solid fa-boxes-stacked" style="color: #6366F1;"></i> Total Stok Fisik
+            </div>
+            <div class="stat-num" id="statTotalStock">0 Buku</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label"><i class="fa-solid fa-circle-check" style="color: #10B981;"></i> Buku Tersedia</div>
+            <div class="stat-num" style="color: #10B981;" id="statAvailableStock">0 Buku</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label"><i class="fa-solid fa-hand-holding-hand" style="color: #F59E0B;"></i> Sedang
+              Dipinjam</div>
+            <div class="stat-num" style="color: #F59E0B;" id="statBorrowedStock">0 Buku</div>
+          </div>
+        </div>
+
+        <!-- FILTER TAB KHUSUS BUKU DEMO & UMUM (HORIZONTALLY SCROLLABLE ON MOBILE) -->
+        <div class="book-filter-tabs-wrap" style="margin-bottom: 14px;">
+          <button type="button" class="tab-filter-btn active" id="tabBookAll" onclick="setBookFilterTab('all')">
+            <i class="fa-solid fa-layer-group"></i> Semua Koleksi (<span id="countTabAll">0</span>)
+          </button>
+          <button type="button" class="tab-filter-btn" id="tabBookDemo" onclick="setBookFilterTab('demo')">
+            <i class="fa-solid fa-star" style="color: #EAB308;"></i> Buku Demo Rak IoT (<span id="countTabDemo">0</span>)
+          </button>
+          <button type="button" class="tab-filter-btn" id="tabBookGeneral" onclick="setBookFilterTab('general')">
+            <i class="fa-solid fa-book-bookmark" style="color: #64748B;"></i> Koleksi Umum (<span id="countTabGeneral">0</span>)
+          </button>
+        </div>
+
+        <!-- ACTION BAR -->
+        <div class="admin-action-bar">
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="adminSearchInput" class="search-input"
+              placeholder="Cari judul, penulis, ISBN, atau kode..." oninput="filterAdminTable(this.value)">
+          </div>
+
+          <div class="admin-action-group">
+            <button class="btn-secondary" onclick="openCategoryModal()">
+              <i class="fa-solid fa-tags" style="color: #F59E0B;"></i> Tambah Kategori
+            </button>
+            <button class="btn-primary" onclick="openAddBookModal()">
+              <i class="fa-solid fa-plus"></i> Tambah Buku Baru
+            </button>
+          </div>
+        </div>
+
+        <!-- BOOKS MANAGEMENT TABLE -->
+        <div class="admin-table-wrap">
+          <table class="custom-table">
+            <thead>
+              <tr>
+                <th>Cover</th>
+                <th>Kode / ISBN</th>
+                <th>Judul & Penulis</th>
+                <th>Kategori</th>
+                <th>Lokasi Rak & LED</th>
+                <th>Ketersediaan Stok</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="adminBookTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+
+      <!-- ======================================================================
+           SECTION 2: PEMINJAMAN BUKU
+           ====================================================================== -->
+      <section class="admin-view-section" id="sectionLoans">
+        <div class="admin-action-bar">
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="loanSearchInput" class="search-input"
+              placeholder="Cari peminjaman berdasarkan NIM, Nama, atau Judul..." oninput="filterLoanTable(this.value)">
+          </div>
+
+          <div class="admin-action-group">
+            <select id="loanFilterStatus" class="form-control" style="width: 170px; padding: 8px 12px;"
+              onchange="loadLoansData()">
+              <option value="ACTIVE">Sedang Dipinjam</option>
+              <option value="ALL">Semua Riwayat</option>
+              <option value="RETURNED">Sudah Dikembalikan</option>
+            </select>
+            <button class="btn-primary" onclick="openCreateLoanModal()">
+              <i class="fa-solid fa-plus"></i> Transaksi Pinjam Baru
+            </button>
+          </div>
+        </div>
+
+        <div class="admin-table-wrap">
+          <table class="custom-table">
+            <thead>
+              <tr>
+                <th>ID Transaksi</th>
+                <th>Mahasiswa (Peminjam)</th>
+                <th>Buku Dipinjam</th>
+                <th>Tgl Pinjam</th>
+                <th>Jatuh Tempo</th>
+                <th>Status Waktu</th>
+                <th>Aksi Sirkulasi</th>
+              </tr>
+            </thead>
+            <tbody id="loanTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+
+      <!-- ======================================================================
+           SECTION 3: BUKU TERLAMBAT (OVERDUE)
+           ====================================================================== -->
+      <section class="admin-view-section" id="sectionOverdue">
+        <div class="alert-banner-overdue">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.6rem; color: #EF4444;"></i>
+            <div>
+              <strong style="color: #991B1B; font-size: 1.05rem;">Daftar Mahasiswa Terlambat Mengembalikan Buku</strong>
+              <div style="font-size: 0.85rem; color: #7F1D1D; margin-top: 2px;">
+                Buku yang melewati batas 7 hari otomatis disorot merah. Klik tombol WhatsApp untuk mengirim pesan
+                pengingat ke mahasiswa.
+              </div>
+            </div>
+          </div>
+          <span class="badge-overdue" style="font-size: 0.9rem; padding: 6px 14px;" id="overdueBannerCount">0
+            Terlambat</span>
+        </div>
+
+        <div class="admin-table-wrap">
+          <table class="custom-table">
+            <thead>
+              <tr>
+                <th>ID Pinjam</th>
+                <th>NIM & Mahasiswa</th>
+                <th>Program Studi</th>
+                <th>Buku</th>
+                <th>Jatuh Tempo</th>
+                <th>Keterlambatan</th>
+                <th>Kontak & Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="overdueTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+
+      <!-- ======================================================================
+           SECTION 4: DATA MAHASISWA
+           ====================================================================== -->
+      <section class="admin-view-section" id="sectionMembers">
+        <div class="admin-action-bar">
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="memberSearchInput" class="search-input"
+              placeholder="Cari NIM, Nama, atau Program Studi..." oninput="filterMemberTable(this.value)">
+          </div>
+
+          <div class="admin-action-group">
+            <button class="btn-primary" onclick="openAddMemberModal()">
+              <i class="fa-solid fa-user-plus"></i> Tambah Mahasiswa
+            </button>
+          </div>
+        </div>
+
+        <div class="admin-table-wrap">
+          <table class="custom-table">
+            <thead>
+              <tr>
+                <th>NIM</th>
+                <th>Nama Lengkap</th>
+                <th>Program Studi</th>
+                <th>Nomor WhatsApp</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="memberTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SECTION 5: PENGATURAN SISTEM PERPUSTAKAAN (APP SETTINGS)
+           ==================================================================== -->
+      <section class="admin-view-section" id="sectionSettings">
+
+        <div class="admin-top-action-bar" style="margin-bottom: 24px;">
+          <div>
+            <h2
+              style="font-size: 1.25rem; font-weight: 800; color: #0F172A; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-sliders" style="color: #0284C7;"></i> Konfigurasi Sistem Perpustakaan
+            </h2>
+            <p style="font-size: 0.85rem; color: #64748B; margin-top: 4px;">
+              Atur durasi peminjaman, perpanjangan, template pesan WhatsApp, parameter IoT LED rak, dan identitas
+              perpustakaan.
+            </p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn-secondary" onclick="handleResetSettings()"
+              title="Kembalikan semua pengaturan ke nilai standar">
+              <i class="fa-solid fa-rotate-left"></i> Reset ke Default
+            </button>
+            <button type="button" class="search-btn" style="background: #0284C7;"
+              onclick="document.getElementById('settingsSubmitBtn').click()">
+              <i class="fa-solid fa-floppy-disk"></i> Simpan Pengaturan
+            </button>
+          </div>
+        </div>
+
+        <form id="settingsForm" onsubmit="handleSaveSettings(event)">
+
+          <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-bottom: 24px;">
+
+            <!-- KARTU 1: SIRKULASI & PINJAMAN -->
+            <div
+              style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px; box-shadow: var(--shadow-sm);">
+              <div
+                style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; border-bottom: 1px solid #F1F5F9; padding-bottom: 12px;">
+                <div
+                  style="width: 36px; height: 36px; border-radius: 10px; background: #E0F2FE; color: #0284C7; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                  <i class="fa-solid fa-book-bookmark"></i>
+                </div>
+                <div>
+                  <h3 style="font-size: 1rem; font-weight: 700; color: #0F172A;">Kebijakan Peminjaman & Sirkulasi</h3>
+                  <p style="font-size: 0.78rem; color: #64748B;">Aturan durasi dan kuota peminjaman</p>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Durasi Peminjaman Standar *</label>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="number" id="settingDefaultLoanDays" class="form-control" min="1" max="90" required
+                      style="font-weight: 700;">
+                    <span style="font-size: 0.85rem; color: #64748B; font-weight: 600;">Hari</span>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Durasi Tambahan Perpanjangan *</label>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="number" id="settingExtensionDays" class="form-control" min="1" max="90" required
+                      style="font-weight: 700;">
+                    <span style="font-size: 0.85rem; color: #64748B; font-weight: 600;">Hari</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Maksimal Kali Perpanjangan *</label>
+                  <select id="settingMaxExtensionCount" class="form-control" required style="font-weight: 700;">
+                    <option value="0">Tidak Boleh Diperpanjang (0x)</option>
+                    <option value="1">1 Kali Perpanjangan (Standar)</option>
+                    <option value="2">2 Kali Perpanjangan</option>
+                    <option value="3">3 Kali Perpanjangan</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Maks. Buku Dipinjam per Mahasiswa *</label>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="number" id="settingMaxBooksPerMember" class="form-control" min="1" max="20" required
+                      style="font-weight: 700;">
+                    <span style="font-size: 0.85rem; color: #64748B; font-weight: 600;">Buku</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">Estimasi Denda Keterlambatan per Hari</label>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 0.85rem; color: #64748B; font-weight: 700;">Rp</span>
+                  <input type="number" id="settingFinePerDay" class="form-control" min="0" step="500"
+                    placeholder="Contoh: 1000" style="font-weight: 700;">
+                  <span style="font-size: 0.85rem; color: #64748B; font-weight: 600;">/hari</span>
+                </div>
+                <span style="font-size: 0.74rem; color: #94A3B8;">Otomatis dikalikan jumlah hari terlambat pada pesan
+                  WhatsApp.</span>
+              </div>
+            </div>
+
+            <!-- KARTU 2: PARAMETER IOT & IDENTITAS -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+
+              <!-- IOT LED CARD -->
+              <div
+                style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px; box-shadow: var(--shadow-sm);">
+                <div
+                  style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; border-bottom: 1px solid #F1F5F9; padding-bottom: 12px;">
+                  <div
+                    style="width: 36px; height: 36px; border-radius: 10px; background: #FEF3C7; color: #D97706; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                    <i class="fa-solid fa-lightbulb"></i>
+                  </div>
+                  <div>
+                    <h3 style="font-size: 1rem; font-weight: 700; color: #0F172A;">Parameter IoT Lampu Rak</h3>
+                    <p style="font-size: 0.78rem; color: #64748B;">Pengaturan durasi aktif LED WS2812B</p>
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label">Durasi LED Menyala saat Dicari (Kiosk / Admin) *</label>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="number" id="settingLedDurationSeconds" class="form-control" min="5" max="120" required
+                      style="font-weight: 700;">
+                    <span style="font-size: 0.85rem; color: #64748B; font-weight: 600;">Detik</span>
+                  </div>
+                  <span style="font-size: 0.74rem; color: #94A3B8;">Durasi hitung mundur lampu di rak fisik sebelum
+                    padam otomatis.</span>
+                </div>
+              </div>
+
+              <!-- IDENTITAS & OPERASIONAL CARD -->
+              <div
+                style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px; box-shadow: var(--shadow-sm);">
+                <div
+                  style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; border-bottom: 1px solid #F1F5F9; padding-bottom: 12px;">
+                  <div
+                    style="width: 36px; height: 36px; border-radius: 10px; background: #ECFDF5; color: #059669; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                    <i class="fa-solid fa-building-columns"></i>
+                  </div>
+                  <div>
+                    <h3 style="font-size: 1rem; font-weight: 700; color: #0F172A;">Identitas & Layanan Sirkulasi</h3>
+                    <p style="font-size: 0.78rem; color: #64748B;">Informasi resmi perpustakaan kampus</p>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Nama Institusi Perpustakaan *</label>
+                  <input type="text" id="settingLibraryName" class="form-control" required
+                    placeholder="Contoh: UPT Perpustakaan UNSIKA">
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Jam Operasional Layanan *</label>
+                    <input type="text" id="settingLibraryHours" class="form-control" required
+                      placeholder="Contoh: Senin - Jumat: 08.00 - 16.00 WIB">
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Nomor Hotline WhatsApp Perpustakaan</label>
+                    <input type="text" id="settingLibraryHotline" class="form-control"
+                      placeholder="Contoh: 081234567890">
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- KARTU 3: TEMPLATE PESAN WHATSAPP (FULL WIDTH) -->
+          <div
+            style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px; box-shadow: var(--shadow-sm); margin-bottom: 24px;">
+            <div
+              style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; border-bottom: 1px solid #F1F5F9; padding-bottom: 12px;">
+              <div
+                style="width: 36px; height: 36px; border-radius: 10px; background: #DCFCE7; color: #16A34A; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
+                <i class="fa-brands fa-whatsapp"></i>
+              </div>
+              <div>
+                <h3 style="font-size: 1rem; font-weight: 700; color: #0F172A;">Template Pesan WhatsApp Otomatis</h3>
+                <p style="font-size: 0.78rem; color: #64748B;">Sesuaikan format kata dan informasi yang dikirimkan ke
+                  mahasiswa</p>
+              </div>
+            </div>
+
+            <!-- Variabel Helper Chips (Click-to-Insert) -->
+            <div
+              style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px; margin-bottom: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+                <div style="font-size: 0.82rem; font-weight: 700; color: #1E293B;">
+                  <i class="fa-solid fa-code" style="color: #0284C7;"></i> Variabel Template Otomatis
+                </div>
+                <div style="font-size: 0.74rem; color: #0284C7; font-weight: 600; background: #E0F2FE; padding: 3px 10px; border-radius: 20px;">
+                  <i class="fa-solid fa-hand-pointer"></i> Klik variabel untuk menyisipkan ke posisi kursor
+                </div>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{nama}')" title="Klik untuk menyisipkan Nama Mahasiswa">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{nama}</code> <span style="font-size: 0.72rem; color: #64748B;">(Nama)</span>
+                </button>
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{nim}')" title="Klik untuk menyisipkan NIM Mahasiswa">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{nim}</code> <span style="font-size: 0.72rem; color: #64748B;">(NIM)</span>
+                </button>
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{judul}')" title="Klik untuk menyisipkan Judul Buku">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{judul}</code> <span style="font-size: 0.72rem; color: #64748B;">(Judul Buku)</span>
+                </button>
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{tanggal_tempo}')" title="Klik untuk menyisipkan Tanggal Jatuh Tempo">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{tanggal_tempo}</code> <span style="font-size: 0.72rem; color: #64748B;">(Tgl Tempo)</span>
+                </button>
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{hari_terlambat}')" title="Klik untuk menyisipkan Jumlah Hari Terlambat">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{hari_terlambat}</code> <span style="font-size: 0.72rem; color: #64748B;">(Hari Telat)</span>
+                </button>
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{denda}')" title="Klik untuk menyisipkan Total Estimasi Denda">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{denda}</code> <span style="font-size: 0.72rem; color: #64748B;">(Denda)</span>
+                </button>
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{jam_buka}')" title="Klik untuk menyisipkan Jam Operasional">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{jam_buka}</code> <span style="font-size: 0.72rem; color: #64748B;">(Jam Buka)</span>
+                </button>
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{nama_perpus}')" title="Klik untuk menyisipkan Nama Perpustakaan">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{nama_perpus}</code> <span style="font-size: 0.72rem; color: #64748B;">(Nama Perpus)</span>
+                </button>
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{kode_pinjam}')" title="Klik untuk menyisipkan Kode Transaksi">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{kode_pinjam}</code> <span style="font-size: 0.72rem; color: #64748B;">(Kode Transaksi)</span>
+                </button>
+                <button type="button" class="badge-tag-pill" onclick="insertWaPlaceholder('{tanggal_pinjam}')" title="Klik untuk menyisipkan Tanggal Pinjam">
+                  <i class="fa-solid fa-plus" style="font-size: 0.65rem; color: #0284C7;"></i> <code>{tanggal_pinjam}</code> <span style="font-size: 0.72rem; color: #64748B;">(Tgl Pinjam)</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" style="font-weight: 700; color: #991B1B;">
+                <i class="fa-solid fa-triangle-exclamation"></i> Template Pengingat Buku Terlambat (Overdue Reminder) *
+              </label>
+              <textarea id="settingWaOverdueTemplate" class="form-control" rows="4" required
+                style="line-height: 1.5; font-size: 0.88rem;" onfocus="setWaTemplateFocus('settingWaOverdueTemplate')"></textarea>
+              <span style="font-size: 0.74rem; color: #94A3B8;">Pesan ini otomatis muncul saat pustakawan menekan tombol
+                "Chat WA" di daftar Buku Terlambat.</span>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-weight: 700; color: #0284C7;">
+                <i class="fa-solid fa-receipt"></i> Template Struk Bukti Peminjaman Baru (Loan Receipt) *
+              </label>
+              <textarea id="settingWaReceiptTemplate" class="form-control" rows="3" required
+                style="line-height: 1.5; font-size: 0.88rem;" onfocus="setWaTemplateFocus('settingWaReceiptTemplate')"></textarea>
+              <span style="font-size: 0.74rem; color: #94A3B8;">Digunakan untuk mengirim konfirmasi dan tanggal jatuh
+                tempo kepada peminjam baru.</span>
+            </div>
+
+          </div>
+
+          <!-- Hidden Submit Button -->
+          <button type="submit" id="settingsSubmitBtn" style="display: none;"></button>
+
+          <!-- Footer Actions Bar -->
+          <div
+            style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #E2E8F0; padding-top: 20px;">
+            <button type="button" class="btn-secondary" onclick="handleResetSettings()">
+              <i class="fa-solid fa-rotate-left"></i> Reset ke Standar Bawaan
+            </button>
+            <button type="submit" class="search-btn" style="background: #0284C7; padding: 10px 24px;">
+              <i class="fa-solid fa-floppy-disk"></i> Simpan Seluruh Pengaturan
+            </button>
+          </div>
+
+        </form>
+
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       MODAL 1: TRANSAKSI PINJAM BUKU (SMART AUTO-FILL)
+       ====================================================================== -->
+  <div class="modal-backdrop" id="loanModal">
+    <div class="modal-dialog" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fa-solid fa-hand-holding-hand" style="color: #0284C7;"></i> Transaksi
+          Peminjaman Baru</h3>
+        <button class="modal-close" onclick="closeLoanModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="loanForm" onsubmit="handleSaveLoan(event)">
+
+          <!-- SMART AUTO-FILL NIM -->
+          <div
+            style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 14px; border-radius: 8px; margin-bottom: 16px;">
+            <label class="form-label" style="font-weight: 700; color: #0F172A;">NIM Mahasiswa *</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="loanMemberNim" class="form-control" placeholder="Ketik NIM lalu tekan Enter..."
+                required onblur="lookupMemberByNim(this.value)" oninput="lookupMemberByNim(this.value)">
+              <button type="button" class="btn-secondary" style="padding: 0 12px;"
+                onclick="lookupMemberByNim(document.getElementById('loanMemberNim').value)">
+                <i class="fa-solid fa-search"></i>
+              </button>
+            </div>
+            <div id="nimLookupStatus" style="font-size: 0.78rem; margin-top: 6px; color: #64748B;"></div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Nama Lengkap Mahasiswa *</label>
+              <input type="text" id="loanMemberName" class="form-control" placeholder="Nama mahasiswa" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Program Studi *</label>
+              <input type="text" id="loanMemberProdi" class="form-control" placeholder="Contoh: Informatika" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">No. WhatsApp / HP *</label>
+            <input type="text" id="loanMemberPhone" class="form-control" placeholder="Contoh: 081234567890" required>
+          </div>
+
+          <!-- PILIH BUKU YANG TERSEDIA -->
+          <div class="form-group">
+            <label class="form-label">Pilih Buku yang Dipinjam *</label>
+            <select id="loanBookSelect" class="form-control" required>
+              <!-- Diisi via JS -->
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Tanggal Pinjam</label>
+              <input type="text" id="loanBorrowDate" class="form-control" readonly style="background: #F1F5F9;">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Batas Kembali (<span id="loanModalDurationLabel">7 Hari</span>)</label>
+              <input type="text" id="loanDueDate" class="form-control" readonly
+                style="background: #FEF3C7; color: #92400E; font-weight: 700;">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Catatan Tambahan (Opsional)</label>
+            <input type="text" id="loanNotes" class="form-control" placeholder="Catatan khusus...">
+          </div>
+
+          <div class="modal-footer" style="margin: 20px -24px -24px -24px;">
+            <button type="button" class="btn-secondary" onclick="closeLoanModal()">Batal</button>
+            <button type="submit" class="search-btn" style="background: #0284C7;">Simpan Peminjaman</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ======================================================================
+       MODAL 2: TAMBAH / EDIT MAHASISWA
+       ====================================================================== -->
+  <div class="modal-backdrop" id="memberModal">
+    <div class="modal-dialog" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="memberModalTitle">Tambah Anggota Mahasiswa</h3>
+        <button class="modal-close" onclick="closeMemberModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="memberForm" onsubmit="handleSaveMember(event)">
+          <div class="form-group">
+            <label class="form-label">NIM (Nomor Induk Mahasiswa) *</label>
+            <input type="text" id="memberNim" class="form-control" required placeholder="Contoh: 22416255201101">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nama Lengkap *</label>
+            <input type="text" id="memberName" class="form-control" required placeholder="Nama lengkap">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Program Studi / Jurusan *</label>
+            <input type="text" id="memberProdi" class="form-control" required
+              placeholder="Contoh: Informatika / Sistem Informasi">
+          </div>
+          <div class="form-group">
+            <label class="form-label">No. WhatsApp / HP *</label>
+            <input type="text" id="memberPhone" class="form-control" required placeholder="Contoh: 081234567890">
+          </div>
+          <div class="modal-footer" style="margin: 20px -24px -24px -24px;">
+            <button type="button" class="btn-secondary" onclick="closeMemberModal()">Batal</button>
+            <button type="submit" class="search-btn" style="background: #0284C7;">Simpan Data</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ======================================================================
+       MODAL 3: TAMBAH / EDIT KOLEKSI BUKU
+       ====================================================================== -->
+  <div class="modal-backdrop" id="bookFormModal">
+    <div class="modal-dialog" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="bookModalTitle">Tambah Koleksi Buku Baru</h3>
+        <button class="modal-close" onclick="closeBookFormModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="bookForm" onsubmit="handleSaveBook(event)">
+          <input type="hidden" id="formMode" value="ADD">
+
+          <div class="form-row">
+            <div class="form-group">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label class="form-label" style="margin-bottom: 0;">Kode Buku / Barcode (ID) *</label>
+                <button type="button" class="btn-secondary"
+                  style="padding: 2px 8px; font-size: 0.72rem; color: #0284C7; font-weight: 700; border-color: #BAE6FD;"
+                  onclick="generateAutoBookId()" title="Buat ID buku otomatis">
+                  <i class="fa-solid fa-bolt"></i> Auto Generate
+                </button>
+              </div>
+              <input type="text" id="bookId" class="form-control" placeholder="Contoh: BK-006" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nomor ISBN</label>
+              <input type="text" id="bookIsbn" class="form-control" placeholder="Contoh: 978-602-xxx">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Judul Buku *</label>
+            <input type="text" id="bookTitle" class="form-control" placeholder="Masukkan judul buku lengkap" required>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Penulis / Pengarang *</label>
+              <input type="text" id="bookAuthor" class="form-control" placeholder="Nama penulis" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Penerbit</label>
+              <input type="text" id="bookPublisher" class="form-control" placeholder="Nama penerbit">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Tahun Terbit</label>
+              <input type="number" id="bookYear" class="form-control" placeholder="Contoh: 2023" min="1900" max="2099">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Jumlah Halaman</label>
+              <input type="number" id="bookPages" class="form-control" placeholder="Contoh: 350" min="1">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Kategori Buku *</label>
+              <select id="bookCategory" class="form-control" required
+                onchange="if(document.getElementById('formMode').value==='ADD'){ generateAutoBookId(); }">
+                <!-- Diisi via JS -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Penempatan Rak *</label>
+              <select id="bookRack" class="form-control" required>
+                <!-- Diisi via JS -->
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Titik Spesifik LED WS2812B (Slot) *</label>
+              <input type="number" id="bookLedSlot" class="form-control" min="1" max="100" placeholder="Nomor LED"
+                required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Jumlah Stok Buku (Unit) *</label>
+              <input type="number" id="bookStock" class="form-control" min="1" value="1" required>
+            </div>
+          </div>
+
+          <!-- CHECKBOX BUKU PERAGA DEMO RAK IOT -->
+          <div class="form-group" style="background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;">
+            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin-bottom: 0;">
+              <input type="checkbox" id="bookIsDemo" style="width: 18px; height: 18px; accent-color: #0284C7; cursor: pointer; margin-top: 2px;">
+              <div>
+                <span style="font-weight: 700; font-size: 0.88rem; color: #0F172A; display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-star" style="color: #EAB308;"></i> Buku Peraga Demo Rak IoT (Ada di Miniatur Rak Fisik)
+                </span>
+                <span style="display: block; font-size: 0.75rem; color: #64748B; margin-top: 2px; line-height: 1.4;">
+                  Centang opsi ini jika buku fisik ini dibawa dan diletakkan pada rak demonstrasi IoT agar menyala saat dicari di Kiosk pada saat sidang / pameran.
+                </span>
+              </div>
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Link URL Gambar Cover Buku (Open URL)</label>
+            <input type="url" id="bookCoverUrl" class="form-control" placeholder="https://images.unsplash.com/..."
+              oninput="previewCoverImage(this.value)">
+            <div style="display: flex; gap: 14px; align-items: center; margin-top: 8px;">
+              <div class="cover-preview-box" id="coverPreviewBox">
+                <span style="font-size: 0.75rem; color: #94A3B8; text-align: center;">No Preview</span>
+              </div>
+              <div style="font-size: 0.8rem; color: #64748B;">
+                Masukkan URL gambar dari Google Images atau link terbuka lainnya. Cover akan otomatis tersimpan.
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Sinopsis / Ringkasan Buku</label>
+            <textarea id="bookSynopsis" class="form-control" rows="3"
+              placeholder="Tuliskan ringkasan singkat isi buku..."></textarea>
+          </div>
+
+          <div class="modal-footer" style="margin: 20px -24px -24px -24px;">
+            <button type="button" class="btn-secondary" onclick="closeBookFormModal()">Batal</button>
+            <button type="submit" class="btn-primary">
+              <i class="fa-solid fa-floppy-disk"></i> Simpan Data Buku
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ======================================================================
+       MODAL 4: TAMBAH KATEGORI & WARNA LED
+       ====================================================================== -->
+  <div class="modal-backdrop" id="categoryModal">
+    <div class="modal-dialog" style="max-width: 520px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-tags" style="color: #0284C7;"></i> Tambah Kategori & Warna LED
+          </h3>
+          <span style="font-size: 0.76rem; color: #64748B;">Atur klasifikasi buku dan warna lampu navigasi rak</span>
+        </div>
+        <button class="modal-close" onclick="closeCategoryModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="categoryForm" onsubmit="handleSaveCategory(event)">
+          <div class="form-group">
+            <label class="form-label">ID Kategori (Contoh: CAT-KEDOKTERAN) *</label>
+            <input type="text" id="catId" class="form-control" required placeholder="CAT-..."
+              style="text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;"
+              oninput="this.value = this.value.toUpperCase()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nama Kategori *</label>
+            <input type="text" id="catName" class="form-control" required placeholder="Nama kategori buku">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Warna Lampu Indikator LED (HEX) *</label>
+            <div class="color-picker-group">
+              <input type="color" id="catColorPicker" class="color-swatch-input" value="#0284C7"
+                onchange="setCategoryColor(this.value)">
+              <div class="color-hex-input-wrap">
+                <input type="text" id="catColorHex" class="form-control" value="#0284C7" required
+                  oninput="setCategoryColor(this.value)">
+              </div>
+            </div>
+
+            <!-- Quick Color Palette Presets -->
+            <div style="margin-top: 8px;">
+              <span style="font-size: 0.74rem; color: #64748B; font-weight: 600;">Pilihan Warna Cepat:</span>
+              <div class="color-preset-list">
+                <span class="color-preset-dot" style="background-color: #0284C7;" title="Biru UNSIKA (#0284C7)" onclick="setCategoryColor('#0284C7')"></span>
+                <span class="color-preset-dot" style="background-color: #10B981;" title="Hijau Emerald (#10B981)" onclick="setCategoryColor('#10B981')"></span>
+                <span class="color-preset-dot" style="background-color: #F59E0B;" title="Kuning Amber (#F59E0B)" onclick="setCategoryColor('#F59E0B')"></span>
+                <span class="color-preset-dot" style="background-color: #EF4444;" title="Merah (#EF4444)" onclick="setCategoryColor('#EF4444')"></span>
+                <span class="color-preset-dot" style="background-color: #8B5CF6;" title="Ungu Violet (#8B5CF6)" onclick="setCategoryColor('#8B5CF6')"></span>
+                <span class="color-preset-dot" style="background-color: #EC4899;" title="Pink Rose (#EC4899)" onclick="setCategoryColor('#EC4899')"></span>
+                <span class="color-preset-dot" style="background-color: #06B6D4;" title="Cyan (#06B6D4)" onclick="setCategoryColor('#06B6D4')"></span>
+                <span class="color-preset-dot" style="background-color: #84CC16;" title="Lime (#84CC16)" onclick="setCategoryColor('#84CC16')"></span>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Deskripsi Singkat</label>
+            <input type="text" id="catDesc" class="form-control" placeholder="Keterangan klasifikasi buku">
+          </div>
+
+          <!-- DAFTAR KATEGORI YANG SUDAH ADA -->
+          <div class="existing-cat-section">
+            <div class="existing-cat-header">
+              <label class="form-label" style="font-size: 0.8rem; color: #475569; margin-bottom: 0;">
+                <i class="fa-solid fa-list-check" style="color: #0284C7;"></i> Daftar Kategori Terdaftar:
+              </label>
+              <span id="existingCatCount" style="font-size: 0.75rem; font-weight: 700; color: #64748B;">0 Kategori</span>
+            </div>
+            <div id="existingCategoriesList" class="category-list-scroll">
+              <!-- Diisi via JS -->
+            </div>
+          </div>
+
+          <div class="modal-footer" style="margin: 20px -24px -24px -24px;">
+            <button type="button" class="btn-secondary" onclick="closeCategoryModal()">Tutup</button>
+            <button type="submit" class="btn-primary">
+              <i class="fa-solid fa-plus"></i> Simpan Kategori Baru
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- SWEETALERT2 POPUP ENGINE -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    /* Force Transparent Backdrop for Toast Notifications */
+    body.swal2-toast-shown .swal2-container,
+    div.swal2-container.swal2-top-end,
+    div.swal2-container.swal2-top-right,
+    div.swal2-container.swal2-top-end.swal2-backdrop-show,
+    div.swal2-container.swal2-top-right.swal2-backdrop-show {
+      background: transparent !important;
+      background-color: transparent !important;
+      box-shadow: none !important;
+      width: auto !important;
+      height: auto !important;
+      top: 16px !important;
+      right: 16px !important;
+      bottom: auto !important;
+      left: auto !important;
+      pointer-events: none !important;
+    }
+  </style>
+  <script src="/js/admin-app.js"></script>
+</body>
+
+</html>

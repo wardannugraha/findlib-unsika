@@ -1,0 +1,241 @@
+{
+  "categories": [
+    {
+      "id": "CAT-FIKSI",
+      "name": "Fiksi & Sastra",
+      "color_hex": "#22C55E",
+      "description": "Koleksi novel, sastra Indonesia & dunia, antologi puisi, dan cerpen"
+    },
+    {
+      "id": "CAT-NONFIKSI",
+      "name": "Teknologi & Sains",
+      "color_hex": "#EAB308",
+      "description": "Buku teknologi informasi, sains terapan, kecerdasan buatan, dan elektronika"
+    },
+    {
+      "id": "CAT-SKRIPSI",
+      "name": "Skripsi & Tugas Akhir TI",
+      "color_hex": "#3B82F6",
+      "description": "Koleksi karya ilmiah, skripsi, dan proyek akhir mahasiswa Fasilkom UNSIKA"
+    }
+  ],
+  "racks": [
+    {
+      "id": "RAK-01-T1",
+      "rack_name": "Rak A - Tingkat 1 (Bawah)",
+      "level_number": 1,
+      "led_start_index": 1,
+      "led_end_index": 4,
+      "category_id": "CAT-FIKSI"
+    },
+    {
+      "id": "RAK-01-T2",
+      "rack_name": "Rak A - Tingkat 2 (Tengah)",
+      "level_number": 2,
+      "led_start_index": 5,
+      "led_end_index": 8,
+      "category_id": "CAT-NONFIKSI"
+    },
+    {
+      "id": "RAK-01-T3",
+      "rack_name": "Rak A - Tingkat 3 (Atas)",
+      "level_number": 3,
+      "led_start_index": 9,
+      "led_end_index": 12,
+      "category_id": "CAT-SKRIPSI"
+    }
+  ],
+  "books": [
+    {
+      "id": "BK-001",
+      "isbn": "978-602-03-6651-7",
+      "title": "Laut Bercerita",
+      "author": "Leila S. Chudori",
+      "publisher": "Kepustakaan Populer Gramedia",
+      "publish_year": 2017,
+      "page_count": 379,
+      "synopsis": "Novel yang mengangkat kisah aktivis mahasiswa yang hilang pada masa Orde Baru tahun 1998, menceritakan persahabatan, cinta, keluarga, dan perjuangan kebebasan.",
+      "category_id": "CAT-FIKSI",
+      "rack_id": "RAK-01-T1",
+      "led_slot": 3,
+      "is_demo": false,
+      "cover_url": "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=500&q=80",
+      "total_stock": 3,
+      "available_stock": 3,
+      "borrowed_count": 0,
+      "status": "AVAILABLE"
+    },
+    {
+      "id": "BK-002",
+      "isbn": "978-979-97312-3-4",
+      "title": "Bumi Manusia",
+      "author": "Pramoedya Ananta Toer",
+      "publisher": "Lentera Dipantara",
+      "publish_year": 2005,
+      "page_count": 535,
+      "synopsis": "Roman sejarah berlatar era kolonial Hindia Belanda tentang pergulatan Minke, pemuda pribumi terpelajar yang memperjuangkan martabat bangsanya.",
+      "category_id": "CAT-FIKSI",
+      "rack_id": "RAK-01-T1",
+      "led_slot": 1,
+      "is_demo": true,
+      "cover_url": "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=500&q=80",
+      "total_stock": 2,
+      "available_stock": 2,
+      "borrowed_count": 0,
+      "status": "AVAILABLE"
+    },
+    {
+      "id": "BK-003",
+      "isbn": "978-602-412-518-9",
+      "title": "Filosofi Teras",
+      "author": "Henry Manampiring",
+      "publisher": "Penerbit Buku Kompas",
+      "publish_year": 2018,
+      "page_count": 346,
+      "synopsis": "Panduan praktis filsafat Stoa (Stoisisme) kuno yang disesuaikan dengan kehidupan generasi muda masa kini untuk mengendalikan emosi negatif.",
+      "category_id": "CAT-NONFIKSI",
+      "rack_id": "RAK-01-T2",
+      "led_slot": 6,
+      "is_demo": true,
+      "cover_url": "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500&q=80",
+      "total_stock": 4,
+      "available_stock": 3,
+      "borrowed_count": 1,
+      "status": "AVAILABLE"
+    },
+    {
+      "id": "BK-004",
+      "isbn": "978-602-6232-15-2",
+      "title": "Dasar Pemrograman Internet of Things (IoT) Berbasis ESP32",
+      "author": "Feri Djuandi",
+      "publisher": "Informatika Bandung",
+      "publish_year": 2022,
+      "page_count": 412,
+      "synopsis": "Buku ajar komprehensif mengenai konsep sensor, aktuator, mikrokontroler ESP32, protokol MQTT, dan integrasi cloud IoT.",
+      "category_id": "CAT-NONFIKSI",
+      "rack_id": "RAK-01-T2",
+      "led_slot": 7,
+      "is_demo": true,
+      "cover_url": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&q=80",
+      "total_stock": 5,
+      "available_stock": 4,
+      "borrowed_count": 1,
+      "status": "AVAILABLE"
+    },
+    {
+      "id": "TA-042",
+      "isbn": "SKR-TI-2025-042",
+      "title": "Rancang Bangun Sistem Navigasi Rak Buku IoT Berbasis ESP32 dan MQTT",
+      "author": "Wardan N. & Tim UNSIKA",
+      "publisher": "Fakultas Ilmu Komputer UNSIKA",
+      "publish_year": 2025,
+      "page_count": 128,
+      "synopsis": "Laporan tugas akhir implementasi Virtual Zoning dan Addressable LED WS2812B untuk otomasi penunjuk lokasi fisik koleksi perpustakaan UNSIKA.",
+      "category_id": "CAT-SKRIPSI",
+      "rack_id": "RAK-01-T3",
+      "led_slot": 11,
+      "is_demo": true,
+      "cover_url": "https://images.unsplash.com/photo-1532012164546-f432f2e372fe?w=500&q=80",
+      "total_stock": 1,
+      "available_stock": 1,
+      "borrowed_count": 0,
+      "status": "AVAILABLE"
+    },
+    {
+      "id": "BK-005",
+      "isbn": "978-602-06-3317-6",
+      "title": "Clean Code: A Handbook of Agile Software Craftsmanship",
+      "author": "Robert C. Martin",
+      "publisher": "Prentice Hall",
+      "publish_year": 2008,
+      "page_count": 464,
+      "synopsis": "Panduan standar industri tentang penulisan kode yang bersih, mudah dibaca, dan mudah dirawat untuk rekayasa perangkat lunak profesional.",
+      "category_id": "CAT-NONFIKSI",
+      "rack_id": "RAK-01-T2",
+      "led_slot": 8,
+      "is_demo": false,
+      "cover_url": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=500&q=80",
+      "total_stock": 5,
+      "available_stock": 5,
+      "borrowed_count": 0,
+      "status": "AVAILABLE"
+    },
+    {
+      "id": "TA-099",
+      "isbn": "SKR-TI-2024-099",
+      "title": "Analisis Sentimen Opini Publik Menggunakan BERT dan Deep Learning",
+      "author": "Dina Mariana",
+      "publisher": "Fakultas Ilmu Komputer UNSIKA",
+      "publish_year": 2024,
+      "page_count": 110,
+      "synopsis": "Karya ilmiah skripsi pemodelan pemrosesan bahasa alami (NLP) untuk klasifikasi ulasan pengguna sistem informasi kampus.",
+      "category_id": "CAT-SKRIPSI",
+      "rack_id": "RAK-01-T3",
+      "led_slot": 12,
+      "is_demo": false,
+      "cover_url": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=500&q=80",
+      "total_stock": 2,
+      "available_stock": 2,
+      "borrowed_count": 0,
+      "status": "AVAILABLE"
+    }
+  ],
+  "members": [
+    {
+      "nim": "22416255201101",
+      "name": "Ahmad Fadhil",
+      "prodi": "Informatika",
+      "phone": "081234567890"
+    },
+    {
+      "nim": "22416255201102",
+      "name": "Siti Nurhaliza",
+      "prodi": "Sistem Informasi",
+      "phone": "082198765432"
+    },
+    {
+      "nim": "22416255201103",
+      "name": "Rizky Pratama",
+      "prodi": "Teknik Elektro",
+      "phone": "085711223344"
+    }
+  ],
+  "loans": [
+    {
+      "id": "PJ-202608-001",
+      "member_nim": "22416255201101",
+      "book_id": "BK-001",
+      "borrow_date": "2026-08-23",
+      "due_date": "2026-08-30",
+      "return_date": null,
+      "extension_count": 0,
+      "status": "BORROWED",
+      "notes": "Peminjaman reguler mahasiswa"
+    },
+    {
+      "id": "PJ-202608-002",
+      "member_nim": "22416255201102",
+      "book_id": "BK-003",
+      "borrow_date": "2026-08-17",
+      "due_date": "2026-08-24",
+      "return_date": null,
+      "extension_count": 0,
+      "status": "OVERDUE",
+      "notes": "Terlambat 2 hari"
+    }
+  ],
+  "settings": {
+    "default_loan_days": "7",
+    "extension_days": "7",
+    "max_extension_count": "1",
+    "max_books_per_member": "3",
+    "fine_per_day": "1000",
+    "demo_mode_enabled": "true",
+    "wa_overdue_template": "Halo {nama} (NIM: {nim}), kami dari {nama_perpus} menginformasikan bahwa peminjaman buku \"{judul}\" telah melewati batas pengembalian pada tanggal {tanggal_tempo} (Terlambat {hari_terlambat} hari). Estimasi denda: {denda}. Layanan sirkulasi buka: {jam_buka}. Mohon segera mengembalikan buku tersebut ke perpustakaan. Terima kasih.",
+    "wa_loan_receipt_template": "Halo {nama} (NIM: {nim}), peminjaman buku \"{judul}\" dengan Kode Transaksi {kode_pinjam} berhasil dicatat pada {tanggal_pinjam}. Batas terakhir pengembalian adalah {tanggal_tempo}. Harap kembalikan tepat waktu ke {nama_perpus}. Terima kasih.",
+    "library_hotline": "081234567890",
+    "led_duration_seconds": "15",
+    "library_name": "UPT Perpustakaan UNSIKA",
+    "library_hours": "Senin - Jumat: 08.00 - 16.00 WIB"
+  }
+}

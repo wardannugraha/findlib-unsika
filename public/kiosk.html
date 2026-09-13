@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terminal Perpustakaan - FindLib UNSIKA</title>
+  <link rel="icon" type="image/png" href="/images/unsika.png">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+
+<body style="background-color: #F1F5F9; user-select: none;">
+
+  <!-- NAVBAR KIOSK (TERKUNCI & TERISOLASI - TANPA MENU ADMIN SAMA SEKALI) -->
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <img src="/images/unsika.png" alt="UNSIKA" class="nav-logo-img">
+        <div>
+          <div class="nav-title">FindLib UNSIKA</div>
+          <div class="nav-subtitle">Universitas Singaperbangsa Karawang</div>
+        </div>
+      </div>
+      <div class="nav-links">
+        <!-- Tidak ada tombol admin / logout di sini agar pengunjung di perpustakaan tidak bisa otak-atik -->
+        <span class="badge-mode" style="background: #10B981; color: white; padding: 6px 14px; font-size: 0.8rem;">
+          <i class="fa-solid fa-map-pin"></i> <span class="hide-on-mobile">TERMINAL </span>PERPUSTAKAAN
+        </span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO BANNER & SEARCH (KIOSK EDITION) -->
+  <header class="hero-section">
+    <div class="container hero-content">
+
+      <!-- HERO TAG + MQTT LIVE STATUS & DEMO MODE BADGE -->
+      <div
+        style="display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; justify-content: center;">
+        <div class="hero-tag" style="margin-bottom: 0;">
+          <i class="fa-solid fa-map-pin"></i> Terminal Navigasi Rak Buku
+        </div>
+        <div id="mqttStatusPill" class="rack-status-badge">
+          <i class="fa-solid fa-satellite-dish"></i> <span id="mqttStatusText">Rak LED Siap</span>
+        </div>
+        <div id="kioskDemoPill" class="rack-status-badge" style="display: none; background: rgba(245, 158, 11, 0.2); color: #F59E0B; border: 1px solid #FCD34D;">
+          <i class="fa-solid fa-star"></i> <span id="kioskDemoText">Mode Demo Rak IoT</span>
+        </div>
+      </div>
+
+      <!-- TITLE & DESC -->
+      <h1 class="hero-title">
+        Temukan Buku & Panduan Rak Fisik UNSIKA
+      </h1>
+      <p class="hero-desc">
+        Cari buku yang Anda butuhkan, lalu tekan <strong>"Nyalakan"</strong> untuk melihat lampu LED berkedip langsung
+        di rak fisik perpustakaan.
+      </p>
+
+      <!-- SEARCH BAR -->
+      <div class="search-wrapper">
+        <div class="search-input-group">
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+          <input type="text" id="kioskSearchInput" class="search-input"
+            placeholder="Ketik judul buku, pengarang, ISBN, atau topik...">
+          <button id="kioskSearchBtn" class="search-btn" style="background: #0284C7;">
+            <i class="fa-solid fa-search"></i> Cari di Rak
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- MAIN KIOSK LAYOUT (GRID: CATALOG & LIVE VIRTUAL RACK) -->
+  <main class="container" style="padding-top: 16px; padding-bottom: 40px;">
+
+    <div class="kiosk-grid" id="kioskMainGrid">
+
+      <!-- LEFT: BOOK LIST -->
+      <div class="kiosk-main-col">
+        
+        <!-- CATALOG HEADER & FILTER BAR -->
+        <div class="catalog-filter-bar">
+          <div class="catalog-header-left">
+            <h2 class="section-title" style="font-size: 1.15rem;">Koleksi Buku di Rak</h2>
+            <span class="catalog-count" id="kioskBookCount">Memuat...</span>
+          </div>
+
+          <div class="catalog-header-actions">
+            <!-- Category Dropdown -->
+            <div class="category-dropdown-wrap">
+              <label for="kioskCategorySelect" class="category-select-label">
+                <i class="fa-solid fa-filter"></i> Kategori:
+              </label>
+              <div class="custom-select-container">
+                <select id="kioskCategorySelect" class="custom-category-select" onchange="selectKioskCategory(this.value)">
+                  <option value="ALL">Semua Kategori</option>
+                </select>
+                <i class="fa-solid fa-chevron-down select-chevron"></i>
+              </div>
+            </div>
+
+            <!-- Tombol Buka / Tutup Miniatur Rak -->
+            <button id="toggleRackBtn" class="pill-btn" onclick="toggleVirtualRack()"
+              style="padding: 7px 14px; font-size: 0.8rem; background: #FFFFFF; border: 1px solid #CBD5E1; color: #1E293B;"
+              title="Sembunyikan atau Buka Miniatur Rak Buku">
+              <i class="fa-solid fa-server" style="color: #0284C7;"></i> <span id="toggleRackBtnText">Sembunyikan Rak</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="kiosk-book-grid" id="kioskBookGrid">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+
+      <!-- RIGHT: LIVE VIRTUAL RACK VISUALIZER & STATUS -->
+      <div class="rack-visualizer-panel" id="rackVisualizerPanel">
+
+        <div class="rack-panel-header">
+          <div>
+            <h3 style="font-size: 1.05rem; font-weight: 700;"><i class="fa-solid fa-server" style="color: #F59E0B;"></i>
+              Miniatur Rak Buku</h3>
+            <span style="font-size: 0.75rem; color: #94A3B8;">Panduan Lampu LED & Virtual Zoning</span>
+          </div>
+          <button type="button" onclick="toggleVirtualRack(false)" title="Tutup / Sembunyikan Miniatur Rak"
+            style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: #E2E8F0; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; transition: var(--transition);">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <!-- RACK CONTAINER (3 TIERS) -->
+        <div class="rack-container" id="virtualRackContainer">
+
+          <!-- TIER 3 (ATAS) -->
+          <div class="rack-tier" id="tier-3">
+            <div class="tier-header">
+              <strong style="color: #60A5FA;">Tingkat 3 (Atas)</strong>
+              <span>Zona Skripsi & TA (LED 9-12)</span>
+            </div>
+            <div class="tier-slots">
+              <div class="led-node" id="led-node-9">#9</div>
+              <div class="led-node" id="led-node-10">#10</div>
+              <div class="led-node" id="led-node-11">#11</div>
+              <div class="led-node" id="led-node-12">#12</div>
+            </div>
+          </div>
+
+          <!-- TIER 2 (TENGAH) -->
+          <div class="rack-tier" id="tier-2">
+            <div class="tier-header">
+              <strong style="color: #FBBF24;">Tingkat 2 (Tengah)</strong>
+              <span>Zona Teknologi & Sains (LED 5-8)</span>
+            </div>
+            <div class="tier-slots">
+              <div class="led-node" id="led-node-5">#5</div>
+              <div class="led-node" id="led-node-6">#6</div>
+              <div class="led-node" id="led-node-7">#7</div>
+              <div class="led-node" id="led-node-8">#8</div>
+            </div>
+          </div>
+
+          <!-- TIER 1 (BAWAH) -->
+          <div class="rack-tier" id="tier-1">
+            <div class="tier-header">
+              <strong style="color: #4ADE80;">Tingkat 1 (Bawah)</strong>
+              <span>Zona Fiksi & Sastra (LED 1-4)</span>
+            </div>
+            <div class="tier-slots">
+              <div class="led-node" id="led-node-1">#1</div>
+              <div class="led-node" id="led-node-2">#2</div>
+              <div class="led-node" id="led-node-3">#3</div>
+              <div class="led-node" id="led-node-4">#4</div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ACTIVE LOCATE STATUS BOX -->
+        <div class="timer-box" id="activeStatusBox" style="display: none;">
+          <div style="font-size: 0.8rem; color: #94A3B8; margin-bottom: 4px;">PANDUAN LAMPU AKTIF</div>
+          <div id="activeBookName" style="font-size: 0.95rem; font-weight: 700; color: #FFFFFF; margin-bottom: 8px;">-
+          </div>
+          <div style="display: flex; justify-content: center; align-items: baseline; gap: 6px;">
+            <span class="timer-count" id="countdownTimer">15</span>
+            <span style="font-size: 0.85rem; color: #CBD5E1;">detik tersisa</span>
+          </div>
+          <p style="font-size: 0.75rem; color: #94A3B8; margin-top: 6px;">Lampu LED di rak fisik sedang menyala. Silakan
+            ambil buku di titik yang berkedip.</p>
+        </div>
+
+        <!-- MQTT STATUS FOOTER -->
+        <div
+          style="margin-top: 18px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; font-size: 0.75rem; color: #64748B;">
+          <i class="fa-solid fa-circle-check" style="color: #10B981;"></i> Sistem terhubung ke Rak LED Perpustakaan
+          UNSIKA.
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- MODAL DETAIL BUKU & SINOPSIS (KIOSK DENGAN TOMBOL IOT) -->
+  <div class="modal-backdrop" id="kioskBookDetailModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title" id="kioskModalBookTitle">Detail Informasi Buku</h3>
+        <button class="modal-close" onclick="closeKioskBookModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="kioskModalBookBody">
+        <!-- Konten detail buku kiosk diisi via JavaScript -->
+      </div>
+      <div class="modal-footer" id="kioskModalBookFooter">
+        <button class="btn-secondary" onclick="closeKioskBookModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div><strong>FindLib UNSIKA Terminal</strong> &copy; 2026 UPT Perpustakaan UNSIKA.</div>
+      <div><span>Sentuh layar untuk mencari koleksi buku</span></div>
+    </div>
+  </footer>
+
+  <!-- SWEETALERT2 POPUP ENGINE -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="/js/kiosk-app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Katalog Perpustakaan - FindLib UNSIKA</title>
+  <link rel="icon" type="image/png" href="/images/unsika.png">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+
+<body>
+
+  <!-- NAVBAR PUBLIK (BERSIH & FOKUS PADA PENGUNJUNG) -->
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <img src="/images/unsika.png" alt="UNSIKA" class="nav-logo-img">
+        <div>
+          <div class="nav-title">FindLib UNSIKA</div>
+          <div class="nav-subtitle">Find your Library &bull; Universitas Singaperbangsa Karawang</div>
+        </div>
+      </div>
+      <div class="nav-links">
+        <a href="/" class="nav-link active"><i class="fa-solid fa-book"></i> Katalog Buku</a>
+        <!-- Menu internal/admin disembunyikan dari publik demi keamanan dan kebersihan UX -->
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO BANNER & SEARCH -->
+  <header class="hero-section">
+    <div class="container hero-content">
+      <div class="hero-tag">
+        <i class="fa-solid fa-graduation-cap"></i> E-Katalog Koleksi Perpustakaan
+      </div>
+      <h1 class="hero-title">Temukan Buku & Referensi Akademik UNSIKA</h1>
+      <p class="hero-desc">
+        Cari ketersediaan koleksi novel, buku teks teknologi, sains, dan skripsi mahasiswa Universitas Singaperbangsa
+        Karawang.
+      </p>
+
+      <!-- SEARCH BAR -->
+      <div class="search-wrapper">
+        <div class="search-input-group">
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+          <input type="text" id="searchInput" class="search-input"
+            placeholder="Cari judul buku, penulis, penerbit, atau ISBN...">
+          <button id="searchBtn" class="search-btn">Cari Buku</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CATALOG CONTENT -->
+  <main class="container">
+
+    <!-- CATALOG HEADER & FILTER BAR -->
+    <div class="catalog-filter-bar">
+      <div class="catalog-header-left">
+        <h2 class="section-title">Daftar Koleksi</h2>
+        <span class="catalog-count" id="bookCountText">Memuat koleksi...</span>
+      </div>
+
+      <div class="category-dropdown-wrap">
+        <label for="categorySelect" class="category-select-label">
+          <i class="fa-solid fa-filter"></i> Kategori:
+        </label>
+        <div class="custom-select-container">
+          <select id="categorySelect" class="custom-category-select" onchange="selectCategory(this.value)">
+            <option value="ALL">Semua Kategori</option>
+          </select>
+          <i class="fa-solid fa-chevron-down select-chevron"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOOK GRID -->
+    <div class="book-grid" id="bookGrid">
+      <!-- Kartu buku publik di-render via JavaScript -->
+    </div>
+
+  </main>
+
+  <!-- MODAL DETAIL BUKU & SINOPSIS (PUBLIK) -->
+  <div class="modal-backdrop" id="bookDetailModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalBookTitle">Detail Informasi Buku</h3>
+        <button class="modal-close" onclick="closeBookModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBookBody">
+        <!-- Konten detail buku publik diisi via JavaScript -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeBookModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div>
+        <strong>FindLib UNSIKA</strong> &copy; 2026 UPT Perpustakaan Universitas Singaperbangsa Karawang.
+      </div>
+      <div>
+        <span>Jl. H.S. Ronggowaluyo, Telukjambe Timur, Karawang</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/js/public-app.js"></script>
+</body>
+
+</html>
