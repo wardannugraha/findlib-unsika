@@ -32,15 +32,31 @@ Petugas perpustakaan dapat masuk secara langsung melalui URL login khusus:
 
 ---
 
-## 🚀 3. Cara Menjalankan Aplikasi
+## 🚀 3. Panduan Clone & Menjalankan Aplikasi dari GitHub
 
-Pastikan laptop terinstall **Node.js**. Buka terminal di folder `libnav-unsika`:
+Bagi anggota tim/teman yang baru pertama kali mengambil project ini dari GitHub:
 
+### Langkah Awal (Clone & Setup):
 ```bash
-# Langkah 1: Install semua dependensi (hanya 1x di awal)
+# 1. Clone repository dari GitHub
+git clone https://github.com/wardannugraha/findlib-unsika.git
+
+# 2. Masuk ke direktori project
+cd findlib-unsika
+
+# 3. Buat file .env dari template yang disediakan
+# Di Windows (Command Prompt / PowerShell):
+copy .env.example .env
+
+# Di Linux / Mac / Git Bash:
+# cp .env.example .env
+
+# 4. Buka file .env dan sesuaikan kredensial (DATABASE_URL, password admin, dll)
+
+# 5. Install semua dependensi Node.js
 npm install
 
-# Langkah 2: Jalankan server
+# 6. Jalankan server aplikasi
 npm start
 ```
 

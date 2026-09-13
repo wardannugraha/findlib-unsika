@@ -13,12 +13,21 @@
 
 ---
 
-## 🚀 Cara Menjalankan
+## 🚀 Cara Clone & Menjalankan
+
 ```bash
-# 1. Install dependensi
+# 1. Clone repository
+git clone https://github.com/wardannugraha/findlib-unsika.git
+cd findlib-unsika
+
+# 2. Salin template konfigurasi environment
+copy .env.example .env     # di Windows
+# cp .env.example .env     # di Linux / Mac
+
+# 3. Install dependensi
 npm install
 
-# 2. Jalankan server
+# 4. Jalankan server
 npm start
 ```
 Buka browser di `http://localhost:3000`.
