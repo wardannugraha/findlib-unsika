@@ -23,6 +23,17 @@ let adminMembers = [];
 let adminSettings = {};
 let currentAdminSection = 'books';
 
+// Utility Escape HTML
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // ==============================================================================
 // 1. AUTH GUARD
 // ==============================================================================
@@ -47,8 +58,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Inisialisasi Data Admin & Pengaturan Sistem
+    initAdminFilterBackdropEvents();
     await loadSettingsData();
     await loadAdminCategories();
+    await loadAdminProdi();
     await loadAdminRacks();
     await loadAdminBooks();
     await loadLoansData();
@@ -552,8 +565,396 @@ async function loadSystemStatus() {
 }
 
 // ==============================================================================
-// 4. MANAJEMEN KOLEKSI BUKU
+// 4. MANAJEMEN KOLEKSI BUKU & MASTER PRODI
 // ==============================================================================
+let adminProdiList = [];
+
+// State Multi-Filter Admin
+let selectedAdminCategories = new Set();
+let selectedAdminProdis = new Set();
+let adminYearFromVal = '';
+let adminYearToVal = '';
+
+// Draft State dalam Modal Filter Admin
+let tempAdminCategories = new Set();
+let tempAdminProdis = new Set();
+let tempAdminYearFrom = '';
+let tempAdminYearTo = '';
+
+function initAdminFilterBackdropEvents() {
+  window.addEventListener('click', (e) => {
+    const filterModal = document.getElementById('adminFilterModal');
+    if (e.target === filterModal) {
+      closeAdminFilterModal();
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const filterModal = document.getElementById('adminFilterModal');
+      if (filterModal && filterModal.classList.contains('open')) {
+        closeAdminFilterModal();
+      }
+    }
+  });
+
+  const yf = document.getElementById('adminFilterYearFrom');
+  const yt = document.getElementById('adminFilterYearTo');
+  if (yf) yf.addEventListener('input', renderAdminYearPresets);
+  if (yt) yt.addEventListener('input', renderAdminYearPresets);
+}
+
+// BUKA MODAL FILTER ADMIN
+function openAdminFilterModal() {
+  tempAdminCategories = new Set(selectedAdminCategories);
+  tempAdminProdis = new Set(selectedAdminProdis);
+  tempAdminYearFrom = adminYearFromVal;
+  tempAdminYearTo = adminYearToVal;
+
+  const yf = document.getElementById('adminFilterYearFrom');
+  if (yf) yf.value = tempAdminYearFrom;
+
+  const yt = document.getElementById('adminFilterYearTo');
+  if (yt) yt.value = tempAdminYearTo;
+
+  renderAdminCategoryChips();
+  renderAdminProdiChips();
+  renderAdminYearPresets();
+
+  const modal = document.getElementById('adminFilterModal');
+  if (modal) modal.classList.add('open');
+}
+
+// TUTUP MODAL FILTER ADMIN
+function closeAdminFilterModal() {
+  const modal = document.getElementById('adminFilterModal');
+  if (modal) modal.classList.remove('open');
+}
+
+// TERAPKAN FILTER DARI MODAL ADMIN
+function applyAdminFilterModal() {
+  const yf = document.getElementById('adminFilterYearFrom');
+  const yt = document.getElementById('adminFilterYearTo');
+
+  selectedAdminCategories = new Set(tempAdminCategories);
+  selectedAdminProdis = new Set(tempAdminProdis);
+  adminYearFromVal = yf ? yf.value.trim() : '';
+  adminYearToVal = yt ? yt.value.trim() : '';
+
+  closeAdminFilterModal();
+  filterAdminTable();
+}
+
+// RESET FILTER DARI DALAM MODAL ADMIN
+function resetAllAdminFiltersFromModal() {
+  tempAdminCategories.clear();
+  tempAdminProdis.clear();
+
+  const yf = document.getElementById('adminFilterYearFrom');
+  if (yf) yf.value = '';
+
+  const yt = document.getElementById('adminFilterYearTo');
+  if (yt) yt.value = '';
+
+  renderAdminCategoryChips();
+  renderAdminProdiChips();
+  renderAdminYearPresets();
+}
+
+// RESET SEMUA FILTER LENGKAP ADMIN
+function resetAllAdminFilters() {
+  selectedAdminCategories.clear();
+  selectedAdminProdis.clear();
+  tempAdminCategories.clear();
+  tempAdminProdis.clear();
+  adminYearFromVal = '';
+  adminYearToVal = '';
+
+  const searchInput = document.getElementById('adminSearchInput');
+  if (searchInput) searchInput.value = '';
+
+  const yf = document.getElementById('adminFilterYearFrom');
+  if (yf) yf.value = '';
+
+  const yt = document.getElementById('adminFilterYearTo');
+  if (yt) yt.value = '';
+
+  renderAdminCategoryChips();
+  renderAdminProdiChips();
+  filterAdminTable();
+}
+
+// Render Chip Kategori Admin
+function renderAdminCategoryChips() {
+  const container = document.getElementById('adminCategoryCheckboxList');
+  if (!container) return;
+
+  if (adminCategories.length === 0) {
+    container.innerHTML = '<div class="filter-empty-msg">Tidak ada kategori tersedia</div>';
+    return;
+  }
+
+  container.innerHTML = adminCategories.map(cat => {
+    const isChecked = tempAdminCategories.has(cat.id);
+
+    return `
+      <div class="filter-chip-card ${isChecked ? 'active' : ''}" onclick="toggleTempAdminCategory('${cat.id}')">
+        <span class="chip-checkbox-box"><i class="fa-solid fa-check"></i></span>
+        <span class="chip-label" title="${escapeHtml(cat.name)}">${escapeHtml(cat.name)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// Render Chip Prodi Admin
+function renderAdminProdiChips() {
+  const container = document.getElementById('adminProdiCheckboxList');
+  if (!container) return;
+
+  if (adminProdiList.length === 0) {
+    container.innerHTML = '<div class="filter-empty-msg">Tidak ada data program studi</div>';
+    return;
+  }
+
+  container.innerHTML = adminProdiList.map(p => {
+    const isChecked = tempAdminProdis.has(p);
+
+    return `
+      <div class="filter-chip-card ${isChecked ? 'active' : ''}" onclick="toggleTempAdminProdi('${escapeHtml(p)}')">
+        <span class="chip-checkbox-box"><i class="fa-solid fa-check"></i></span>
+        <span class="chip-label" title="${escapeHtml(p)}">${escapeHtml(p)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// Toggle Kategori di dalam Modal Admin
+function toggleTempAdminCategory(catId) {
+  if (tempAdminCategories.has(catId)) {
+    tempAdminCategories.delete(catId);
+  } else {
+    tempAdminCategories.add(catId);
+  }
+  renderAdminCategoryChips();
+}
+
+// Toggle Prodi di dalam Modal Admin
+function toggleTempAdminProdi(prodiName) {
+  if (tempAdminProdis.has(prodiName)) {
+    tempAdminProdis.delete(prodiName);
+  } else {
+    tempAdminProdis.add(prodiName);
+  }
+  renderAdminProdiChips();
+}
+
+// Pilih Semua / Batal Semua Kategori Admin
+function toggleAllAdminCategories() {
+  const allSelected = adminCategories.every(c => tempAdminCategories.has(c.id));
+
+  if (allSelected) {
+    tempAdminCategories.clear();
+  } else {
+    adminCategories.forEach(c => tempAdminCategories.add(c.id));
+  }
+  renderAdminCategoryChips();
+}
+
+// Pilih Semua / Batal Semua Prodi Admin
+function toggleAllAdminProdis() {
+  const allSelected = adminProdiList.every(p => tempAdminProdis.has(p));
+
+  if (allSelected) {
+    tempAdminProdis.clear();
+  } else {
+    adminProdiList.forEach(p => tempAdminProdis.add(p));
+  }
+  renderAdminProdiChips();
+}
+
+// Render Dynamic Preset Tahun Admin (Berdasarkan new Date().getFullYear())
+function renderAdminYearPresets() {
+  const container = document.getElementById('adminYearQuickPresets');
+  if (!container) return;
+
+  const currentYear = new Date().getFullYear();
+  const yf = document.getElementById('adminFilterYearFrom');
+  const yt = document.getElementById('adminFilterYearTo');
+  if (yt && !yt.getAttribute('placeholder')) yt.setAttribute('placeholder', currentYear);
+
+  const presets = [
+    { label: 'Semua Tahun', from: null, to: null },
+    { label: `Tahun ${currentYear}`, from: currentYear, to: currentYear },
+    { label: '1 Tahun Terakhir', from: currentYear - 1, to: currentYear },
+    { label: '3 Tahun Terakhir', from: currentYear - 3, to: currentYear },
+    { label: '5 Tahun Terakhir', from: currentYear - 5, to: currentYear },
+    { label: '10 Tahun Terakhir', from: currentYear - 10, to: currentYear }
+  ];
+
+  const currentFrom = yf ? yf.value.trim() : '';
+  const currentTo = yt ? yt.value.trim() : '';
+
+  container.innerHTML = presets.map(p => {
+    let isActive = false;
+    if (p.from === null && p.to === null) {
+      isActive = !currentFrom && !currentTo;
+    } else if (p.from !== null && p.to !== null) {
+      isActive = String(p.from) === currentFrom && String(p.to) === currentTo;
+    }
+
+    const fromParam = p.from !== null ? p.from : 'null';
+    const toParam = p.to !== null ? p.to : 'null';
+
+    return `
+      <button type="button" class="btn-preset-chip ${isActive ? 'active' : ''}" onclick="setAdminYearPreset(${fromParam}, ${toParam})">
+        ${p.label}
+      </button>
+    `;
+  }).join('');
+}
+
+// Quick Preset Tahun Admin
+function setAdminYearPreset(from, to) {
+  const yf = document.getElementById('adminFilterYearFrom');
+  const yt = document.getElementById('adminFilterYearTo');
+  if (yf) yf.value = from !== null && from !== undefined ? from : '';
+  if (yt) yt.value = to !== null && to !== undefined ? to : '';
+
+  renderAdminYearPresets();
+}
+
+// Update Indikator Angka Filter Aktif pada Tombol "Filter Koleksi" Admin
+function updateAdminFilterActiveBadge() {
+  let activeCount = 0;
+  activeCount += selectedAdminCategories.size;
+  activeCount += selectedAdminProdis.size;
+  if (adminYearFromVal || adminYearToVal) activeCount += 1;
+
+  const badge = document.getElementById('adminFilterIndicatorBadge');
+  const btn = document.getElementById('btnAdminFilterModal');
+
+  if (badge && btn) {
+    if (activeCount > 0) {
+      badge.textContent = activeCount;
+      badge.style.display = 'inline-flex';
+      btn.classList.add('has-active-filters');
+    } else {
+      badge.style.display = 'none';
+      btn.classList.remove('has-active-filters');
+    }
+  }
+}
+
+// Render Active Filter Pills Admin (Tags di atas tabel)
+function renderAdminActiveFilterPills() {
+  const container = document.getElementById('adminActiveFilterPills');
+  if (!container) return;
+
+  const pills = [];
+  const searchInput = document.getElementById('adminSearchInput');
+  const q = searchInput ? searchInput.value.trim() : '';
+
+  // Query search pill
+  if (q) {
+    pills.push(`
+      <span class="filter-pill">
+        <i class="fa-solid fa-magnifying-glass"></i> "${escapeHtml(q)}"
+        <button type="button" class="pill-remove-btn" onclick="clearAdminSearchFilter()" title="Hapus kata kunci">&times;</button>
+      </span>
+    `);
+  }
+
+  // Category pills
+  selectedAdminCategories.forEach(catId => {
+    const catObj = adminCategories.find(c => c.id === catId);
+    const catName = catObj ? catObj.name : catId;
+    pills.push(`
+      <span class="filter-pill category-pill">
+        <i class="fa-solid fa-tag"></i> ${escapeHtml(catName)}
+        <button type="button" class="pill-remove-btn" onclick="removeAdminCategoryFilter('${catId}')" title="Hapus filter kategori">&times;</button>
+      </span>
+    `);
+  });
+
+  // Prodi pills
+  selectedAdminProdis.forEach(prodi => {
+    pills.push(`
+      <span class="filter-pill prodi-pill">
+        <i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(prodi)}
+        <button type="button" class="pill-remove-btn" onclick="removeAdminProdiFilter('${escapeHtml(prodi)}')" title="Hapus filter prodi">&times;</button>
+      </span>
+    `);
+  });
+
+  // Year Range pill
+  if (adminYearFromVal || adminYearToVal) {
+    let yearLabel = '';
+    if (adminYearFromVal && adminYearToVal) {
+      if (adminYearFromVal === adminYearToVal) {
+        yearLabel = `${adminYearFromVal}`;
+      } else {
+        yearLabel = `${adminYearFromVal} - ${adminYearToVal}`;
+      }
+    } else if (adminYearFromVal) {
+      yearLabel = `≥ ${adminYearFromVal}`;
+    } else if (adminYearToVal) {
+      yearLabel = `≤ ${adminYearToVal}`;
+    }
+    pills.push(`
+      <span class="filter-pill year-pill">
+        <i class="fa-regular fa-calendar"></i> Tahun: ${yearLabel}
+        <button type="button" class="pill-remove-btn" onclick="clearAdminYearFilter()" title="Hapus filter tahun">&times;</button>
+      </span>
+    `);
+  }
+
+  if (pills.length > 0) {
+    container.innerHTML = `
+      <div class="active-pills-list">
+        <span class="active-pills-label"><i class="fa-solid fa-filter"></i> Filter Aktif:</span>
+        ${pills.join('')}
+      </div>
+      <button type="button" class="btn-clear-all-pills" onclick="resetAllAdminFilters()">
+        <i class="fa-solid fa-rotate-left"></i> Reset Filter
+      </button>
+    `;
+    container.style.display = 'flex';
+  } else {
+    container.innerHTML = '';
+    container.style.display = 'none';
+  }
+}
+
+function removeAdminCategoryFilter(catId) {
+  selectedAdminCategories.delete(catId);
+  tempAdminCategories.delete(catId);
+  filterAdminTable();
+}
+
+function removeAdminProdiFilter(prodiName) {
+  selectedAdminProdis.delete(prodiName);
+  tempAdminProdis.delete(prodiName);
+  filterAdminTable();
+}
+
+function clearAdminSearchFilter() {
+  const searchInput = document.getElementById('adminSearchInput');
+  if (searchInput) searchInput.value = '';
+  filterAdminTable();
+}
+
+function clearAdminYearFilter() {
+  adminYearFromVal = '';
+  adminYearToVal = '';
+  tempAdminYearFrom = '';
+  tempAdminYearTo = '';
+  const yf = document.getElementById('adminFilterYearFrom');
+  if (yf) yf.value = '';
+  const yt = document.getElementById('adminFilterYearTo');
+  if (yt) yt.value = '';
+  filterAdminTable();
+}
+
 async function loadAdminCategories() {
   try {
     const res = await fetch('/api/categories');
@@ -564,8 +965,27 @@ async function loadAdminCategories() {
       select.innerHTML = '<option value="">-- Pilih Kategori --</option>' + 
         adminCategories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     }
+
+    renderAdminCategoryChips();
   } catch (err) {
     console.error('Error load categories:', err);
+  }
+}
+
+async function loadAdminProdi() {
+  try {
+    const res = await fetch('/api/prodi');
+    const data = await res.json();
+    adminProdiList = Array.isArray(data) ? data : (data.all || []);
+
+    const dataList = document.getElementById('prodiDataList');
+    if (dataList) {
+      dataList.innerHTML = adminProdiList.map(p => `<option value="${p}">`).join('');
+    }
+
+    renderAdminProdiChips();
+  } catch (err) {
+    console.error('Error load prodi:', err);
   }
 }
 
@@ -588,7 +1008,6 @@ async function loadAdminBooks() {
   const tbody = document.getElementById('adminBookTableBody');
 
   try {
-    // Selalu ambil seluruh buku (all=true) untuk dihitung tab-nya dan difilter di sisi admin
     const res = await fetch('/api/books?all=true');
     adminBooks = await res.json();
 
@@ -604,9 +1023,7 @@ async function loadAdminBooks() {
     if (cDemo) cDemo.textContent = demoBooks.length;
     if (cGen) cGen.textContent = generalBooks.length;
 
-    const searchInput = document.getElementById('adminSearchInput');
-    const query = searchInput ? searchInput.value : '';
-    filterAdminTable(query);
+    filterAdminTable();
     loadSystemStatus();
   } catch (err) {
     console.error('Error load books:', err);
@@ -641,6 +1058,7 @@ function renderAdminTable(books) {
         <td>
           <div style="font-weight: 700; color: #0B192C;">${b.title}</div>
           <div style="font-size: 0.8rem; color: #64748B;">Penulis: ${b.author} ${b.publish_year ? `(${b.publish_year})` : ''}</div>
+          ${b.prodi ? `<div style="margin-top: 5px;"><span class="badge-prodi"><i class="fa-solid fa-graduation-cap"></i> ${b.prodi}</span></div>` : ''}
         </td>
         <td>
           <span class="table-badge-category" style="background-color: ${b.color_hex || '#0284C7'};">
@@ -675,21 +1093,62 @@ function renderAdminTable(books) {
   }).join('');
 }
 
-function filterAdminTable(query) {
+function filterAdminTable() {
   const baseBooks = getFilteredBooks();
+  const searchInput = document.getElementById('adminSearchInput');
 
-  if (!query) {
-    renderAdminTable(baseBooks);
-    return;
+  const q = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+  updateAdminFilterActiveBadge();
+  renderAdminActiveFilterPills();
+
+  let filtered = baseBooks;
+
+  // 1. Filter Search Text
+  if (q) {
+    filtered = filtered.filter(b => 
+      b.title.toLowerCase().includes(q) ||
+      b.author.toLowerCase().includes(q) ||
+      b.id.toLowerCase().includes(q) ||
+      (b.isbn && b.isbn.toLowerCase().includes(q)) ||
+      (b.prodi && b.prodi.toLowerCase().includes(q)) ||
+      (b.category_name && b.category_name.toLowerCase().includes(q))
+    );
   }
 
-  const q = query.toLowerCase();
-  const filtered = baseBooks.filter(b => 
-    b.title.toLowerCase().includes(q) ||
-    b.author.toLowerCase().includes(q) ||
-    b.id.toLowerCase().includes(q) ||
-    (b.isbn && b.isbn.toLowerCase().includes(q))
-  );
+  // 2. Multi-Kategori & Multi-Prodi (Smart Scoping seperti Publik & Kiosk)
+  if (selectedAdminCategories.size > 0 || selectedAdminProdis.size > 0) {
+    const catArray = Array.from(selectedAdminCategories);
+    const prodiArray = Array.from(selectedAdminProdis);
+    const nonSkripsiCats = catArray.filter(c => !c.toLowerCase().includes('skripsi'));
+    const hasSkripsi = catArray.some(c => c.toLowerCase().includes('skripsi'));
+
+    filtered = filtered.filter(b => {
+      if (prodiArray.length > 0) {
+        const matchProdi = b.prodi && prodiArray.includes(b.prodi);
+        const matchNonSkripsi = nonSkripsiCats.includes(b.category_id);
+        return matchProdi || matchNonSkripsi;
+      } else if (catArray.length > 0) {
+        return catArray.includes(b.category_id);
+      }
+      return true;
+    });
+  }
+
+  // 3. Filter Rentang Tahun
+  if (adminYearFromVal) {
+    const yf = parseInt(adminYearFromVal, 10);
+    if (!isNaN(yf)) {
+      filtered = filtered.filter(b => b.publish_year && b.publish_year >= yf);
+    }
+  }
+
+  if (adminYearToVal) {
+    const yt = parseInt(adminYearToVal, 10);
+    if (!isNaN(yt)) {
+      filtered = filtered.filter(b => b.publish_year && b.publish_year <= yt);
+    }
+  }
 
   renderAdminTable(filtered);
 }
@@ -700,7 +1159,7 @@ function generateAutoBookId() {
   const selectedCat = categorySelect ? categorySelect.value : '';
   
   let prefix = 'BK';
-  if (selectedCat === 'CAT-SKRIPSI') {
+  if (selectedCat === 'CAT-SKRIPSI' || selectedCat.toLowerCase().includes('skripsi')) {
     prefix = 'TA';
   }
 
@@ -720,6 +1179,142 @@ function generateAutoBookId() {
   document.getElementById('bookId').value = generatedId;
 }
 
+// ==============================================================================
+// 4.1 SMART CONDITIONAL FIELD & SEARCHABLE COMBOBOX LOGIC (PRODI)
+// ==============================================================================
+function isCategorySkripsi(catId) {
+  if (!catId) return false;
+  if (catId === 'CAT-SKRIPSI') return true;
+  const cat = adminCategories.find(c => c.id === catId);
+  if (!cat) return false;
+  const name = cat.name.toLowerCase();
+  return name.includes('skripsi') || name.includes('tugas akhir') || name.includes('thesis') || name.includes('ta');
+}
+
+function onAdminCategoryChange() {
+  const catSelect = document.getElementById('bookCategory');
+  const selCat = catSelect ? catSelect.value : '';
+  const isSkripsi = isCategorySkripsi(selCat);
+  const prodiGroup = document.getElementById('prodiFormGroup');
+
+  if (prodiGroup) {
+    prodiGroup.style.display = isSkripsi ? 'block' : 'none';
+    if (!isSkripsi) {
+      document.getElementById('bookProdi').value = '';
+      const sInp = document.getElementById('prodiSearchInput');
+      if (sInp) sInp.value = '';
+    }
+  }
+
+  if (document.getElementById('formMode').value === 'ADD') {
+    generateAutoBookId();
+  }
+}
+
+function openProdiDropdown() {
+  const dropdown = document.getElementById('prodiDropdownMenu');
+  const input = document.getElementById('prodiSearchInput');
+  if (dropdown) {
+    renderProdiDropdown(input ? input.value : '');
+    dropdown.style.display = 'block';
+  }
+}
+
+function closeProdiDropdown() {
+  const dropdown = document.getElementById('prodiDropdownMenu');
+  if (dropdown) dropdown.style.display = 'none';
+}
+
+function handleProdiSearch(query) {
+  openProdiDropdown();
+  renderProdiDropdown(query);
+  document.getElementById('bookProdi').value = query.trim();
+}
+
+function renderProdiDropdown(query = '') {
+  const dropdown = document.getElementById('prodiDropdownMenu');
+  if (!dropdown) return;
+
+  const q = (query || '').trim().toLowerCase();
+  const currentVal = document.getElementById('bookProdi').value;
+
+  const matches = adminProdiList.filter(p => p.toLowerCase().includes(q));
+  const exactMatch = adminProdiList.some(p => p.toLowerCase() === q);
+
+  let html = '';
+
+  if (matches.length > 0) {
+    html += matches.map(p => {
+      const isSelected = p === currentVal;
+      return `
+        <div class="combobox-item ${isSelected ? 'selected' : ''}" onclick="selectProdi('${p.replace(/'/g, "\\'")}')">
+          <span><i class="fa-solid fa-graduation-cap" style="color: #3B82F6; margin-right: 6px;"></i> ${p}</span>
+          ${isSelected ? '<i class="fa-solid fa-check" style="color: #1E40AF;"></i>' : ''}
+        </div>
+      `;
+    }).join('');
+  } else if (!q) {
+    html += `<div class="combobox-item empty-msg">Belum ada data prodi. Ketik untuk menambah baru.</div>`;
+  }
+
+  // Opsi Tambah Baru jika user mengetik prodi yang belum ada di daftar
+  if (q && !exactMatch) {
+    const raw = (document.getElementById('prodiSearchInput').value || '').trim();
+    html += `
+      <div class="combobox-item add-new" onclick="selectProdi('${raw.replace(/'/g, "\\'")}')">
+        <span><i class="fa-solid fa-circle-plus"></i> Tambah Baru: "<strong>${raw}</strong>"</span>
+      </div>
+    `;
+  }
+
+  dropdown.innerHTML = html;
+}
+
+function selectProdi(prodiName) {
+  const clean = prodiName.trim();
+  document.getElementById('bookProdi').value = clean;
+  const input = document.getElementById('prodiSearchInput');
+  if (input) input.value = clean;
+
+  if (clean && !adminProdiList.includes(clean)) {
+    adminProdiList.push(clean);
+    adminProdiList.sort((a, b) => a.localeCompare(b));
+    const filterProdi = document.getElementById('adminFilterProdi');
+    if (filterProdi) {
+      filterProdi.innerHTML = '<option value="ALL">Semua Prodi</option>' + 
+        adminProdiList.map(p => `<option value="${p}">${p}</option>`).join('');
+    }
+  }
+
+  closeProdiDropdown();
+}
+
+function handleProdiKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const dropdown = document.getElementById('prodiDropdownMenu');
+    const firstItem = dropdown ? dropdown.querySelector('.combobox-item:not(.empty-msg)') : null;
+    if (firstItem) {
+      firstItem.click();
+    } else {
+      const input = document.getElementById('prodiSearchInput');
+      if (input && input.value.trim()) {
+        selectProdi(input.value.trim());
+      }
+    }
+  } else if (e.key === 'Escape') {
+    closeProdiDropdown();
+  }
+}
+
+// Tutup dropdown combobox saat klik di luar area
+document.addEventListener('click', (e) => {
+  const wrapper = document.getElementById('prodiComboboxWrapper');
+  if (wrapper && !wrapper.contains(e.target)) {
+    closeProdiDropdown();
+  }
+});
+
 function previewCoverImage(url) {
   const box = document.getElementById('coverPreviewBox');
   if (url && url.trim().length > 0) {
@@ -734,8 +1329,11 @@ function openAddBookModal() {
   document.getElementById('bookModalTitle').textContent = 'Tambah Koleksi Buku Baru';
   document.getElementById('bookForm').reset();
   document.getElementById('bookId').readOnly = false;
-  document.getElementById('bookIsDemo').checked = true; // Default centang untuk kemudahan demo
-  generateAutoBookId();
+  document.getElementById('bookIsDemo').checked = true;
+  document.getElementById('bookProdi').value = '';
+  const searchInput = document.getElementById('prodiSearchInput');
+  if (searchInput) searchInput.value = '';
+  onAdminCategoryChange();
   previewCoverImage('');
   document.getElementById('bookFormModal').classList.add('open');
 }
@@ -763,6 +1361,13 @@ function openEditBookModal(bookId) {
   document.getElementById('bookSynopsis').value = book.synopsis || '';
   document.getElementById('bookIsDemo').checked = (book.is_demo === true);
 
+  // Set Program Studi & visibility
+  onAdminCategoryChange();
+  const prodiVal = book.prodi || '';
+  document.getElementById('bookProdi').value = prodiVal;
+  const searchInput = document.getElementById('prodiSearchInput');
+  if (searchInput) searchInput.value = prodiVal;
+
   previewCoverImage(book.cover_url);
   document.getElementById('bookFormModal').classList.add('open');
 }
@@ -774,6 +1379,9 @@ function closeBookFormModal() {
 async function handleSaveBook(e) {
   e.preventDefault();
   const mode = document.getElementById('formMode').value;
+  const categoryId = document.getElementById('bookCategory').value;
+  const prodiInput = document.getElementById('bookProdi');
+  const prodiVal = prodiInput ? prodiInput.value.trim() : '';
 
   const payload = {
     id: document.getElementById('bookId').value.trim(),
@@ -783,7 +1391,8 @@ async function handleSaveBook(e) {
     publisher: document.getElementById('bookPublisher').value.trim(),
     publish_year: parseInt(document.getElementById('bookYear').value, 10) || null,
     page_count: parseInt(document.getElementById('bookPages').value, 10) || null,
-    category_id: document.getElementById('bookCategory').value,
+    category_id: categoryId,
+    prodi: isCategorySkripsi(categoryId) ? prodiVal : null,
     rack_id: document.getElementById('bookRack').value,
     led_slot: parseInt(document.getElementById('bookLedSlot').value, 10),
     is_demo: document.getElementById('bookIsDemo').checked,

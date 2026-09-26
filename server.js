@@ -72,52 +72,61 @@ const DEFAULT_SETTINGS = {
   library_hours: 'Senin - Jumat: 08.00 - 16.00 WIB'
 };
 
-async function getAppSettings() {
-  if (isPgConnected) {
-    try {
-      const res = await pgPool.query('SELECT key, value FROM app_settings');
-      const settings = { ...DEFAULT_SETTINGS };
-      res.rows.forEach(r => {
-        settings[r.key] = r.value;
-      });
-      return settings;
-    } catch (err) {
-      console.error('Error getAppSettings from PG:', err);
-      return DEFAULT_SETTINGS;
-    }
-  } else {
-    const localDb = readLocalDb();
-    return { ...DEFAULT_SETTINGS, ...(localDb.settings || {}) };
+async function safePgQuery(query, params = []) {
+  if (!isPgConnected || !pgPool) return null;
+  try {
+    const res = await pgPool.query(query, params);
+    return res;
+  } catch (err) {
+    const errMsg = err.message || (err.errors && err.errors[0] ? err.errors[0].message : String(err));
+    console.warn(`⚠️ [DATABASE CLOUD NOTICE] Query dialihkan ke mode lokal:`, errMsg);
+    return null;
   }
 }
 
-async function saveAppSettings(newSettings) {
-  if (isPgConnected) {
-    const client = await pgPool.connect();
-    try {
-      await client.query('BEGIN');
-      for (const [key, value] of Object.entries(newSettings)) {
-        await client.query(`
-          INSERT INTO app_settings (key, value, updated_at)
-          VALUES ($1, $2, CURRENT_TIMESTAMP)
-          ON CONFLICT (key) DO UPDATE
-          SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
-        `, [key, String(value)]);
-      }
-      await client.query('COMMIT');
-      return true;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      console.error('Error saveAppSettings to PG:', err);
-      throw err;
-    } finally {
-      client.release();
-    }
-  } else {
-    const localDb = readLocalDb();
-    localDb.settings = { ...(localDb.settings || DEFAULT_SETTINGS), ...newSettings };
-    return writeLocalDb(localDb);
+async function getAppSettings() {
+  const res = await safePgQuery('SELECT key, value FROM app_settings');
+  if (res && res.rows) {
+    const settings = { ...DEFAULT_SETTINGS };
+    res.rows.forEach(r => {
+      settings[r.key] = r.value;
+    });
+    return settings;
   }
+  const localDb = readLocalDb();
+  return { ...DEFAULT_SETTINGS, ...(localDb.settings || {}) };
+}
+
+async function saveAppSettings(newSettings) {
+  if (isPgConnected && pgPool) {
+    try {
+      const client = await pgPool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const [key, value] of Object.entries(newSettings)) {
+          await client.query(`
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES ($1, $2, CURRENT_TIMESTAMP)
+            ON CONFLICT (key) DO UPDATE
+            SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+          `, [key, String(value)]);
+        }
+        await client.query('COMMIT');
+        return true;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.warn('⚠️ Gagal simpan app_settings ke PG, menyimpan ke lokal JSON:', err.message);
+    }
+  }
+
+  const localDb = readLocalDb();
+  localDb.settings = { ...(localDb.settings || DEFAULT_SETTINGS), ...newSettings };
+  return writeLocalDb(localDb);
 }
 
 async function initPostgresDatabase() {
@@ -129,15 +138,25 @@ async function initPostgresDatabase() {
       ssl: { rejectUnauthorized: false }
     });
 
+    pgPool.on('error', () => { });
+
     const client = await pgPool.connect();
     console.log('✅ [DATABASE] Sukses terhubung ke Neon PostgreSQL Cloud!');
     isPgConnected = true;
 
-    // 1. Pastikan kolom is_demo sudah ada di database Neon sebelum eksekusi skema/index
+    // 1. Pastikan kolom is_demo dan prodi sudah ada di database Neon
     try {
       await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS is_demo BOOLEAN DEFAULT FALSE;`);
+      await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS prodi VARCHAR(100);`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_books_is_demo ON books(is_demo);`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_books_prodi ON books(prodi);`);
+      await client.query(`
+        INSERT INTO app_settings (key, value, description)
+        VALUES ('demo_mode_enabled', 'false', 'Status aktifasi Mode Demo IoT untuk rak miniatur peraga')
+        ON CONFLICT (key) DO NOTHING;
+      `);
     } catch (migPreErr) {
-      console.warn('⚠️ [DATABASE] Pre-migration is_demo info:', migPreErr.message);
+      console.warn('⚠️ [DATABASE] Pre-migration books info:', migPreErr.message);
     }
 
     // 2. Eksekusi skema database
@@ -145,24 +164,10 @@ async function initPostgresDatabase() {
     if (fs.existsSync(schemaSqlPath)) {
       const schemaSql = fs.readFileSync(schemaSqlPath, 'utf-8');
       await client.query(schemaSql);
-      console.log('✅ [DATABASE] Struktur tabel terverifikasi (categories, racks, books).');
-    }
-
-    // 3. Pastikan pengaturan demo_mode_enabled dan index terpasang
-    try {
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_books_is_demo ON books(is_demo);`);
-      await client.query(`
-        INSERT INTO app_settings (key, value, description)
-        VALUES ('demo_mode_enabled', 'false', 'Status aktifasi Mode Demo IoT untuk rak miniatur peraga')
-        ON CONFLICT (key) DO NOTHING;
-      `);
-    } catch (migErr) {
-      console.warn('⚠️ [DATABASE] Post-migration is_demo info:', migErr.message);
+      console.log('✅ [DATABASE] Struktur tabel terverifikasi (categories, racks, books, study_programs).');
     }
 
     const checkBooks = await client.query('SELECT COUNT(*) FROM books');
-    
-    // Hanya jalankan seed sampel jika tabel buku benar-benar kosong (0 buku)
     if (parseInt(checkBooks.rows[0].count, 10) === 0) {
       console.log('ℹ️ [DATABASE] Database masih kosong. Menjalankan seed data sampel awal...');
       const seedSqlPath = path.join(__dirname, 'database', 'seed.sql');
@@ -175,7 +180,7 @@ async function initPostgresDatabase() {
 
     client.release();
   } catch (error) {
-    console.warn('⚠️ [DATABASE] Gagal konek ke Neon PostgreSQL. Menggunakan mode database lokal (JSON). Error:', error.message);
+    console.warn('⚠️ [DATABASE] Gagal konek ke Neon PostgreSQL. Menggunakan mode database lokal (JSON). Error:', error.message || error);
     isPgConnected = false;
   }
 }
@@ -219,7 +224,7 @@ mqttClient.on('offline', () => {
 function publishLedEvent(payload) {
   return new Promise((resolve) => {
     const payloadString = JSON.stringify(payload);
-    
+
     if (isMqttConnected) {
       mqttClient.publish(MQTT_TOPIC, payloadString, { qos: 1 }, (err) => {
         if (err) {
@@ -281,7 +286,7 @@ app.get('/api/auth/verify', (req, res) => {
 
     if (tokenUser === ADMIN_USER && secret === AUTH_SECRET) {
       const expiresAt = parseInt(expiresAtStr, 10);
-      
+
       if (Date.now() > expiresAt) {
         return res.status(401).json({ authenticated: false, reason: 'TOKEN_EXPIRED' });
       }
@@ -292,7 +297,7 @@ app.get('/api/auth/verify', (req, res) => {
         user: { username: ADMIN_USER, role: 'ADMINISTRATOR' }
       });
     }
-  } catch (e) {}
+  } catch (e) { }
 
   return res.status(401).json({ authenticated: false, reason: 'INVALID_TOKEN' });
 });
@@ -315,18 +320,18 @@ app.get('/api/system-status', async (req, res) => {
     const settings = await getAppSettings();
     isDemoModeActive = settings.demo_mode_enabled === 'true';
 
-    if (isPgConnected) {
-      const bRes = await pgPool.query(`
-        SELECT 
-          COUNT(*) as titles, 
-          COALESCE(SUM(total_stock), 0) as total_stock, 
-          COALESCE(SUM(available_stock), 0) as available_stock, 
-          COALESCE(SUM(borrowed_count), 0) as borrowed_count,
-          COUNT(CASE WHEN is_demo = TRUE THEN 1 END) as demo_books_count
-        FROM books
-      `);
-      const cRes = await pgPool.query('SELECT COUNT(*) FROM categories');
-      
+    const bRes = await safePgQuery(`
+      SELECT 
+        COUNT(*) as titles, 
+        COALESCE(SUM(total_stock), 0) as total_stock, 
+        COALESCE(SUM(available_stock), 0) as available_stock, 
+        COALESCE(SUM(borrowed_count), 0) as borrowed_count,
+        COUNT(CASE WHEN is_demo = TRUE THEN 1 END) as demo_books_count
+      FROM books
+    `);
+    const cRes = bRes ? await safePgQuery('SELECT COUNT(*) FROM categories') : null;
+
+    if (bRes && bRes.rows && bRes.rows.length > 0 && cRes && cRes.rows) {
       totalTitles = parseInt(bRes.rows[0].titles, 10) || 0;
       totalStock = parseInt(bRes.rows[0].total_stock, 10) || 0;
       availableStock = parseInt(bRes.rows[0].available_stock, 10) || 0;
@@ -381,13 +386,12 @@ app.get('/api/system-status', async (req, res) => {
 // Ambil Kategori
 app.get('/api/categories', async (req, res) => {
   try {
-    if (isPgConnected) {
-      const result = await pgPool.query('SELECT * FROM categories ORDER BY name ASC');
+    const result = await safePgQuery('SELECT * FROM categories ORDER BY name ASC');
+    if (result && result.rows) {
       return res.json(result.rows);
-    } else {
-      const localDb = readLocalDb();
-      return res.json(localDb.categories);
     }
+    const localDb = readLocalDb();
+    return res.json(localDb.categories);
   } catch (err) {
     res.status(500).json({ error: 'Gagal mengambil kategori', details: err.message });
   }
@@ -401,66 +405,122 @@ app.post('/api/categories', async (req, res) => {
       return res.status(400).json({ error: 'ID, Nama Kategori, dan Kode Warna HEX wajib diisi!' });
     }
 
-    if (isPgConnected) {
-      const result = await pgPool.query(`
+    if (isPgConnected && pgPool) {
+      const result = await safePgQuery(`
         INSERT INTO categories (id, name, color_hex, description)
         VALUES ($1, $2, $3, $4)
         RETURNING *
       `, [id, name, color_hex, description || '']);
-      return res.status(201).json({ success: true, category: result.rows[0] });
-    } else {
-      const localDb = readLocalDb();
-      const newCat = { id, name, color_hex, description: description || '' };
-      localDb.categories.push(newCat);
-      writeLocalDb(localDb);
-      return res.status(201).json({ success: true, category: newCat });
+      if (result && result.rows && result.rows.length > 0) {
+        return res.status(201).json({ success: true, category: result.rows[0] });
+      }
     }
+
+    const localDb = readLocalDb();
+    const newCat = { id, name, color_hex, description: description || '' };
+    localDb.categories.push(newCat);
+    writeLocalDb(localDb);
+    return res.status(201).json({ success: true, category: newCat });
   } catch (err) {
     res.status(500).json({ error: 'Gagal menambah kategori', details: err.message });
+  }
+});
+
+// ==============================================================================
+// 2.1 PROGRAM STUDI (MASTER & AKTIF)
+// ==============================================================================
+// Ambil Daftar Program Studi (Master + Aktif yang ada di buku)
+// Ambil Daftar Program Studi (Hanya dari yang tercatat pada koleksi buku)
+app.get('/api/prodi', async (req, res) => {
+  try {
+    const activeRes = await safePgQuery("SELECT DISTINCT prodi FROM books WHERE prodi IS NOT NULL AND TRIM(prodi) != '' ORDER BY prodi ASC");
+
+    if (activeRes && activeRes.rows) {
+      const prodiList = activeRes.rows.map(r => r.prodi).filter(Boolean);
+      return res.json(prodiList);
+    }
+
+    const localDb = readLocalDb();
+    const activeSet = new Set();
+    (localDb.books || []).forEach(b => {
+      if (b.prodi && typeof b.prodi === 'string' && b.prodi.trim()) {
+        activeSet.add(b.prodi.trim());
+      }
+    });
+    const prodiList = Array.from(activeSet).sort((a, b) => a.localeCompare(b));
+    return res.json(prodiList);
+  } catch (err) {
+    res.status(500).json({ error: 'Gagal mengambil daftar prodi', details: err.message });
+  }
+});
+
+// Tambah Program Studi Baru
+app.post('/api/prodi', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Nama program studi wajib diisi!' });
+    }
+    const cleanName = name.trim();
+
+    if (isPgConnected && pgPool) {
+      await safePgQuery(`
+        INSERT INTO study_programs (name)
+        VALUES ($1)
+        ON CONFLICT (name) DO NOTHING
+      `, [cleanName]);
+    }
+
+    const localDb = readLocalDb();
+    if (!localDb.study_programs) localDb.study_programs = [];
+    const exists = localDb.study_programs.some(p => p.toLowerCase() === cleanName.toLowerCase());
+    if (!exists) {
+      localDb.study_programs.push(cleanName);
+      localDb.study_programs.sort((a, b) => a.localeCompare(b));
+      writeLocalDb(localDb);
+    }
+    return res.status(201).json({ success: true, name: cleanName });
+  } catch (err) {
+    res.status(500).json({ error: 'Gagal menambah program studi', details: err.message });
   }
 });
 
 // Ambil Rak
 app.get('/api/racks', async (req, res) => {
   try {
-    if (isPgConnected) {
-      const result = await pgPool.query(`
-        SELECT r.*, c.name as category_name, c.color_hex
-        FROM racks r
-        LEFT JOIN categories c ON r.category_id = c.id
-        ORDER BY r.level_number ASC
-      `);
+    const result = await safePgQuery(`
+      SELECT r.*, c.name as category_name, c.color_hex
+      FROM racks r
+      LEFT JOIN categories c ON r.category_id = c.id
+      ORDER BY r.level_number ASC
+    `);
+
+    if (result && result.rows) {
       return res.json(result.rows);
-    } else {
-      const localDb = readLocalDb();
-      const racks = localDb.racks.map(rack => {
-        const cat = localDb.categories.find(c => c.id === rack.category_id);
-        return {
-          ...rack,
-          category_name: cat ? cat.name : 'Umum',
-          color_hex: cat ? cat.color_hex : '#22C55E'
-        };
-      });
-      return res.json(racks);
     }
+
+    const localDb = readLocalDb();
+    const racks = localDb.racks.map(rack => {
+      const cat = localDb.categories.find(c => c.id === rack.category_id);
+      return {
+        ...rack,
+        category_name: cat ? cat.name : 'Umum',
+        color_hex: cat ? cat.color_hex : '#22C55E'
+      };
+    });
+    return res.json(racks);
   } catch (err) {
-    res.status(500).json({ error: 'Gagal mengambil data rak', details: err.message });
+    res.status(500).json({ error: 'Gagal mengambil rak', details: err.message });
   }
 });
 
-// Ambil Daftar Buku (Mendukung Filter Mode Demo, Pencarian, & Kategori)
+// Ambil Daftar Buku (Mendukung Multi Filter Kategori, Prodi, Range Tahun, Mode Demo, & Pencarian)
 app.get('/api/books', async (req, res) => {
   try {
-    const { q, category, demo_filter, demo_only, all } = req.query;
+    const { q, category, categories, prodi, prodis, year, year_from, year_to, demo_filter, demo_only, all } = req.query;
     const settings = await getAppSettings();
     const isGlobalDemoActive = settings.demo_mode_enabled === 'true';
 
-    // Penentuan filter demo:
-    // demo_filter = 'demo' | 'general' | 'all'
-    // demo_only = 'true' | 'false' | 'all'
-    // default jika all=true: 'all'
-    // default jika demo_mode_enabled=true: 'demo'
-    // default normal: 'all'
     let effectiveDemoFilter = 'all';
     if (demo_filter) {
       effectiveDemoFilter = demo_filter; // 'demo', 'general', 'all'
@@ -473,6 +533,18 @@ app.get('/api/books', async (req, res) => {
     } else if (isGlobalDemoActive) {
       effectiveDemoFilter = 'demo';
     }
+
+    // Parse multi-select filters
+    let catList = [];
+    if (categories) catList = categories.split(',').map(s => s.trim()).filter(Boolean);
+    else if (category && category !== 'ALL') catList = [category.trim()];
+
+    let prodiList = [];
+    if (prodis) prodiList = prodis.split(',').map(s => s.trim()).filter(Boolean);
+    else if (prodi && prodi !== 'ALL') prodiList = [prodi.trim()];
+
+    const yFrom = year_from ? parseInt(year_from, 10) : (year && year !== 'ALL' ? parseInt(year, 10) : null);
+    const yTo = year_to ? parseInt(year_to, 10) : (year && year !== 'ALL' ? parseInt(year, 10) : null);
 
     if (isPgConnected) {
       let query = `
@@ -487,12 +559,45 @@ app.get('/api/books', async (req, res) => {
 
       if (q) {
         params.push(`%${q.toLowerCase()}%`);
-        query += ` AND (LOWER(b.title) LIKE $${params.length} OR LOWER(b.author) LIKE $${params.length} OR LOWER(b.id) LIKE $${params.length} OR LOWER(COALESCE(b.isbn, '')) LIKE $${params.length})`;
+        query += ` AND (LOWER(b.title) LIKE $${params.length} OR LOWER(b.author) LIKE $${params.length} OR LOWER(b.id) LIKE $${params.length} OR LOWER(COALESCE(b.isbn, '')) LIKE $${params.length} OR LOWER(COALESCE(b.prodi, '')) LIKE $${params.length})`;
       }
 
-      if (category && category !== 'ALL') {
-        params.push(category);
-        query += ` AND b.category_id = $${params.length}`;
+      const nonSkripsiCats = catList.filter(c => !c.toLowerCase().includes('skripsi'));
+
+      if (prodiList.length > 0) {
+        const prodiPlaceholders = prodiList.map(p => {
+          params.push(p);
+          return `$${params.length}`;
+        }).join(', ');
+
+        if (nonSkripsiCats.length > 0) {
+          const catPlaceholders = nonSkripsiCats.map(c => {
+            params.push(c);
+            return `$${params.length}`;
+          }).join(', ');
+
+          // Buku umum yang dipilih ATAU Skripsi dari prodi yang dipilih
+          query += ` AND (b.category_id IN (${catPlaceholders}) OR b.prodi IN (${prodiPlaceholders}))`;
+        } else {
+          // Hanya skripsi dari prodi yang dipilih
+          query += ` AND b.prodi IN (${prodiPlaceholders})`;
+        }
+      } else if (catList.length > 0) {
+        const placeholders = catList.map(c => {
+          params.push(c);
+          return `$${params.length}`;
+        }).join(', ');
+        query += ` AND b.category_id IN (${placeholders})`;
+      }
+
+      if (yFrom) {
+        params.push(yFrom);
+        query += ` AND b.publish_year >= $${params.length}`;
+      }
+
+      if (yTo) {
+        params.push(yTo);
+        query += ` AND b.publish_year <= $${params.length}`;
       }
 
       if (effectiveDemoFilter === 'demo') {
@@ -502,47 +607,65 @@ app.get('/api/books', async (req, res) => {
       }
 
       query += ' ORDER BY b.title ASC';
-      const result = await pgPool.query(query, params);
-      return res.json(result.rows);
-    } else {
-      const localDb = readLocalDb();
-      let books = localDb.books.map(b => {
-        const cat = localDb.categories.find(c => c.id === b.category_id);
-        const rack = localDb.racks.find(r => r.id === b.rack_id);
-        return {
-          ...b,
-          is_demo: b.is_demo === true,
-          category_name: cat ? cat.name : 'Umum',
-          color_hex: cat ? cat.color_hex : '#22C55E',
-          rack_name: rack ? rack.rack_name : 'Rak A',
-          level_number: rack ? rack.level_number : 1,
-          led_start_index: rack ? rack.led_start_index : 1,
-          led_end_index: rack ? rack.led_end_index : 4
-        };
-      });
-
-      if (q) {
-        const queryLower = q.toLowerCase();
-        books = books.filter(b => 
-          b.title.toLowerCase().includes(queryLower) ||
-          b.author.toLowerCase().includes(queryLower) ||
-          b.id.toLowerCase().includes(queryLower) ||
-          (b.isbn && b.isbn.toLowerCase().includes(queryLower))
-        );
+      const result = await safePgQuery(query, params);
+      if (result && result.rows) {
+        return res.json(result.rows);
       }
-
-      if (category && category !== 'ALL') {
-        books = books.filter(b => b.category_id === category);
-      }
-
-      if (effectiveDemoFilter === 'demo') {
-        books = books.filter(b => b.is_demo === true);
-      } else if (effectiveDemoFilter === 'general') {
-        books = books.filter(b => b.is_demo !== true);
-      }
-
-      return res.json(books);
     }
+
+    const localDb = readLocalDb();
+    let books = localDb.books.map(b => {
+      const cat = localDb.categories.find(c => c.id === b.category_id);
+      const rack = localDb.racks.find(r => r.id === b.rack_id);
+      return {
+        ...b,
+        is_demo: b.is_demo === true,
+        category_name: cat ? cat.name : 'Umum',
+        color_hex: cat ? cat.color_hex : '#22C55E',
+        rack_name: rack ? rack.rack_name : 'Rak A',
+        level_number: rack ? rack.level_number : 1,
+        led_start_index: rack ? rack.led_start_index : 1,
+        led_end_index: rack ? rack.led_end_index : 4
+      };
+    });
+
+    if (q) {
+      const queryLower = q.toLowerCase();
+      books = books.filter(b =>
+        b.title.toLowerCase().includes(queryLower) ||
+        b.author.toLowerCase().includes(queryLower) ||
+        b.id.toLowerCase().includes(queryLower) ||
+        (b.isbn && b.isbn.toLowerCase().includes(queryLower)) ||
+        (b.prodi && b.prodi.toLowerCase().includes(queryLower))
+      );
+    }
+
+    const nonSkripsiCats = catList.filter(c => !c.toLowerCase().includes('skripsi'));
+    if (prodiList.length > 0) {
+      if (nonSkripsiCats.length > 0) {
+        books = books.filter(b => nonSkripsiCats.includes(b.category_id) || (b.prodi && prodiList.includes(b.prodi)));
+      } else {
+        books = books.filter(b => b.prodi && prodiList.includes(b.prodi));
+      }
+    } else if (catList.length > 0) {
+      books = books.filter(b => catList.includes(b.category_id));
+    }
+
+    if (yFrom) {
+      books = books.filter(b => b.publish_year && b.publish_year >= yFrom);
+    }
+
+    if (yTo) {
+      books = books.filter(b => b.publish_year && b.publish_year <= yTo);
+    }
+
+    if (effectiveDemoFilter === 'demo') {
+      books = books.filter(b => b.is_demo === true);
+    } else if (effectiveDemoFilter === 'general') {
+      books = books.filter(b => b.is_demo !== true);
+    }
+
+    return res.json(books);
   } catch (err) {
     res.status(500).json({ error: 'Gagal mengambil data buku', details: err.message });
   }
@@ -597,7 +720,7 @@ app.post('/api/books', async (req, res) => {
   try {
     const {
       id, isbn, title, author, publisher, publish_year,
-      page_count, synopsis, category_id, rack_id, led_slot,
+      page_count, synopsis, category_id, prodi, rack_id, led_slot,
       is_demo, cover_url, total_stock, available_stock
     } = req.body;
 
@@ -607,8 +730,8 @@ app.post('/api/books', async (req, res) => {
       });
     }
 
-    const defaultCover = cover_url && cover_url.trim().length > 0 
-      ? cover_url.trim() 
+    const defaultCover = cover_url && cover_url.trim().length > 0
+      ? cover_url.trim()
       : 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=500&q=80';
 
     const stockTotal = parseInt(total_stock || 1, 10);
@@ -616,21 +739,22 @@ app.post('/api/books', async (req, res) => {
     const stockBorrowed = stockTotal - stockAvailable;
     const bookStatus = stockAvailable > 0 ? 'AVAILABLE' : 'OUT_OF_STOCK';
     const isDemoBool = is_demo === true || is_demo === 'true';
+    const prodiVal = prodi && prodi.trim().length > 0 ? prodi.trim() : null;
 
     if (isPgConnected) {
       const result = await pgPool.query(`
         INSERT INTO books (
           id, isbn, title, author, publisher, publish_year, page_count,
-          synopsis, category_id, rack_id, led_slot, is_demo, cover_url,
+          synopsis, category_id, prodi, rack_id, led_slot, is_demo, cover_url,
           total_stock, available_stock, borrowed_count, status
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         RETURNING *
       `, [
         id, isbn || null, title, author, publisher || null,
         publish_year ? parseInt(publish_year, 10) : null,
         page_count ? parseInt(page_count, 10) : null,
-        synopsis || '', category_id, rack_id, parseInt(led_slot, 10),
+        synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
         isDemoBool, defaultCover, stockTotal, stockAvailable, stockBorrowed, bookStatus
       ]);
       return res.status(201).json({ success: true, book: result.rows[0] });
@@ -650,6 +774,7 @@ app.post('/api/books', async (req, res) => {
         page_count: page_count ? parseInt(page_count, 10) : null,
         synopsis: synopsis || '',
         category_id,
+        prodi: prodiVal,
         rack_id,
         led_slot: parseInt(led_slot, 10),
         is_demo: isDemoBool,
@@ -676,12 +801,12 @@ app.put('/api/books/:id', async (req, res) => {
     const bookId = req.params.id;
     const {
       isbn, title, author, publisher, publish_year,
-      page_count, synopsis, category_id, rack_id, led_slot,
+      page_count, synopsis, category_id, prodi, rack_id, led_slot,
       is_demo, cover_url, total_stock, available_stock
     } = req.body;
 
-    const defaultCover = cover_url && cover_url.trim().length > 0 
-      ? cover_url.trim() 
+    const defaultCover = cover_url && cover_url.trim().length > 0
+      ? cover_url.trim()
       : 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=500&q=80';
 
     const stockTotal = parseInt(total_stock || 1, 10);
@@ -689,22 +814,23 @@ app.put('/api/books/:id', async (req, res) => {
     const stockBorrowed = Math.max(0, stockTotal - stockAvailable);
     const bookStatus = stockAvailable > 0 ? 'AVAILABLE' : 'OUT_OF_STOCK';
     const isDemoBool = is_demo === true || is_demo === 'true';
+    const prodiVal = prodi && prodi.trim().length > 0 ? prodi.trim() : null;
 
     if (isPgConnected) {
       const result = await pgPool.query(`
         UPDATE books SET
           isbn = $1, title = $2, author = $3, publisher = $4,
           publish_year = $5, page_count = $6, synopsis = $7,
-          category_id = $8, rack_id = $9, led_slot = $10,
-          is_demo = $11, cover_url = $12, total_stock = $13, available_stock = $14,
-          borrowed_count = $15, status = $16, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $17
+          category_id = $8, prodi = $9, rack_id = $10, led_slot = $11,
+          is_demo = $12, cover_url = $13, total_stock = $14, available_stock = $15,
+          borrowed_count = $16, status = $17, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $18
         RETURNING *
       `, [
         isbn || null, title, author, publisher || null,
         publish_year ? parseInt(publish_year, 10) : null,
         page_count ? parseInt(page_count, 10) : null,
-        synopsis || '', category_id, rack_id, parseInt(led_slot, 10),
+        synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
         isDemoBool, defaultCover, stockTotal, stockAvailable, stockBorrowed, bookStatus,
         bookId
       ]);
@@ -730,6 +856,7 @@ app.put('/api/books/:id', async (req, res) => {
         page_count: page_count ? parseInt(page_count, 10) : localDb.books[index].page_count,
         synopsis: synopsis !== undefined ? synopsis : localDb.books[index].synopsis,
         category_id: category_id || localDb.books[index].category_id,
+        prodi: prodiVal,
         rack_id: rack_id || localDb.books[index].rack_id,
         led_slot: led_slot ? parseInt(led_slot, 10) : localDb.books[index].led_slot,
         is_demo: is_demo !== undefined ? isDemoBool : localDb.books[index].is_demo,
@@ -744,8 +871,8 @@ app.put('/api/books/:id', async (req, res) => {
       return res.json({ success: true, book: localDb.books[index] });
     }
   } catch (err) {
-    console.error('Error update buku:', err);
-    res.status(500).json({ error: 'Gagal memperbarui buku', details: err.message });
+    console.error('Error edit buku:', err);
+    res.status(500).json({ error: 'Gagal mengupdate buku', details: err.message });
   }
 });
 
@@ -867,8 +994,8 @@ app.get('/api/members', async (req, res) => {
       let list = localDb.members || [];
       if (q) {
         const queryLower = q.toLowerCase();
-        list = list.filter(m => 
-          m.nim.toLowerCase().includes(queryLower) || 
+        list = list.filter(m =>
+          m.nim.toLowerCase().includes(queryLower) ||
           m.name.toLowerCase().includes(queryLower) ||
           m.prodi.toLowerCase().includes(queryLower)
         );
@@ -1026,9 +1153,11 @@ app.get('/api/loans', async (req, res) => {
 
       query += " ORDER BY CASE WHEN l.return_date IS NULL AND CURRENT_DATE > l.due_date THEN 0 ELSE 1 END, l.due_date ASC";
 
-      const result = await pgPool.query(query, params);
-      return res.json(result.rows);
-    } else {
+      const result = await safePgQuery(query, params);
+      if (result && result.rows) {
+        return res.json(result.rows);
+      }
+      // Fallback to local DB if safePgQuery returns null
       const localDb = readLocalDb();
       const todayStr = new Date().toISOString().split('T')[0];
       const today = new Date(todayStr);
@@ -1073,7 +1202,7 @@ app.get('/api/loans', async (req, res) => {
 
       if (q) {
         const qLower = q.toLowerCase();
-        list = list.filter(l => 
+        list = list.filter(l =>
           l.member_name.toLowerCase().includes(qLower) ||
           l.member_nim.toLowerCase().includes(qLower) ||
           l.book_title.toLowerCase().includes(qLower) ||
@@ -1111,8 +1240,8 @@ app.post('/api/loans', async (req, res) => {
       `, [member_nim]);
       const activeCount = parseInt(activeLoansRes.rows[0].count, 10);
       if (activeCount >= maxBooks) {
-        return res.status(400).json({ 
-          error: `Mahasiswa dengan NIM ${member_nim} telah mencapai batas peminjaman maksimal (${maxBooks} buku aktif). Harap kembalikan buku sebelumnya terlebih dahulu.` 
+        return res.status(400).json({
+          error: `Mahasiswa dengan NIM ${member_nim} telah mencapai batas peminjaman maksimal (${maxBooks} buku aktif). Harap kembalikan buku sebelumnya terlebih dahulu.`
         });
       }
 
@@ -1176,8 +1305,8 @@ app.post('/api/loans', async (req, res) => {
       // Cek batas maksimal buku aktif
       const activeCount = localDb.loans.filter(l => l.member_nim === member_nim && !l.return_date).length;
       if (activeCount >= maxBooks) {
-        return res.status(400).json({ 
-          error: `Mahasiswa dengan NIM ${member_nim} telah mencapai batas peminjaman maksimal (${maxBooks} buku aktif).` 
+        return res.status(400).json({
+          error: `Mahasiswa dengan NIM ${member_nim} telah mencapai batas peminjaman maksimal (${maxBooks} buku aktif).`
         });
       }
 
@@ -1283,8 +1412,8 @@ app.post('/api/loans/:id/extend', async (req, res) => {
         RETURNING TO_CHAR(due_date, 'YYYY-MM-DD') AS due_date, extension_count
       `, [id, extensionDays]);
 
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         message: `Peminjaman berhasil diperpanjang ${extensionDays} hari!`,
         data: {
           loan_id: id,
@@ -1313,8 +1442,8 @@ app.post('/api/loans/:id/extend', async (req, res) => {
       const member = (localDb.members || []).find(m => m.nim === loan.member_nim);
 
       saveLocalDb(localDb);
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         message: `Peminjaman berhasil diperpanjang ${extensionDays} hari (Lokal)!`,
         data: {
           loan_id: id,
@@ -1436,7 +1565,7 @@ app.post('/api/settings/toggle-demo-mode', async (req, res) => {
     const settings = await getAppSettings();
     const current = settings.demo_mode_enabled === 'true';
     const nextState = req.body && req.body.enabled !== undefined ? Boolean(req.body.enabled) : !current;
-    
+
     await saveAppSettings({ ...settings, demo_mode_enabled: String(nextState) });
     const updated = await getAppSettings();
 
@@ -1445,8 +1574,8 @@ app.post('/api/settings/toggle-demo-mode', async (req, res) => {
     res.json({
       success: true,
       demo_mode_enabled: nextState,
-      message: nextState 
-        ? 'Mode Demo IoT AKTIF! Hanya buku peraga rak fisik miniatur yang ditampilkan di antarmuka.' 
+      message: nextState
+        ? 'Mode Demo IoT AKTIF! Hanya buku peraga rak fisik miniatur yang ditampilkan di antarmuka.'
         : 'Mode Demo IoT NONAKTIF. Seluruh katalog koleksi buku perpustakaan kini ditampilkan.',
       settings: updated
     });

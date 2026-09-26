@@ -81,33 +81,34 @@
       <!-- LEFT: BOOK LIST -->
       <div class="kiosk-main-col">
         
-        <!-- CATALOG HEADER & FILTER BAR -->
-        <div class="catalog-filter-bar">
-          <div class="catalog-header-left">
-            <h2 class="section-title" style="font-size: 1.15rem;">Koleksi Buku di Rak</h2>
-            <span class="catalog-count" id="kioskBookCount">Memuat...</span>
-          </div>
-
-          <div class="catalog-header-actions">
-            <!-- Category Dropdown -->
-            <div class="category-dropdown-wrap">
-              <label for="kioskCategorySelect" class="category-select-label">
-                <i class="fa-solid fa-filter"></i> Kategori:
-              </label>
-              <div class="custom-select-container">
-                <select id="kioskCategorySelect" class="custom-category-select" onchange="selectKioskCategory(this.value)">
-                  <option value="ALL">Semua Kategori</option>
-                </select>
-                <i class="fa-solid fa-chevron-down select-chevron"></i>
-              </div>
+        <!-- CATALOG HEADER & FILTER TOOLBAR (KIOSK EDITION) -->
+        <div class="catalog-toolbar-card" style="margin-bottom: 16px;">
+          <div class="catalog-toolbar-main">
+            <div class="catalog-results-info">
+              <h2 class="section-title" style="font-size: 1.15rem;">Koleksi Buku di Rak</h2>
+              <span class="catalog-count" id="kioskBookCount">Memuat...</span>
             </div>
 
-            <!-- Tombol Buka / Tutup Miniatur Rak -->
-            <button id="toggleRackBtn" class="pill-btn" onclick="toggleVirtualRack()"
-              style="padding: 7px 14px; font-size: 0.8rem; background: #FFFFFF; border: 1px solid #CBD5E1; color: #1E293B;"
-              title="Sembunyikan atau Buka Miniatur Rak Buku">
-              <i class="fa-solid fa-server" style="color: #0284C7;"></i> <span id="toggleRackBtnText">Sembunyikan Rak</span>
-            </button>
+            <div class="catalog-toolbar-actions" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <!-- TOMBOL FILTER POPUP KIOSK DENGAN BADGE -->
+              <button type="button" class="btn-filter-trigger" id="btnKioskFilterModal" onclick="openKioskFilterModal()">
+                <i class="fa-solid fa-sliders"></i>
+                <span>Filter Koleksi</span>
+                <span class="filter-indicator-badge" id="kioskFilterIndicatorBadge" style="display: none;">0</span>
+              </button>
+
+              <!-- Tombol Buka / Tutup Miniatur Rak -->
+              <button id="toggleRackBtn" class="pill-btn" onclick="toggleVirtualRack()"
+                style="padding: 8px 14px; font-size: 0.82rem; font-weight: 700; background: #FFFFFF; border: 1.5px solid var(--border-light); border-radius: var(--radius-full); color: #1E293B; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"
+                title="Sembunyikan atau Buka Miniatur Rak Buku">
+                <i class="fa-solid fa-server" style="color: #0284C7;"></i> <span id="toggleRackBtnText">Sembunyikan Rak</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- ACTIVE FILTER PILLS KIOSK -->
+          <div class="active-filter-pills" id="kioskActiveFilterPills" style="display: none;">
+            <!-- Diisi dinamis via JS -->
           </div>
         </div>
 
@@ -216,6 +217,96 @@
       </div>
       <div class="modal-footer" id="kioskModalBookFooter">
         <button class="btn-secondary" onclick="closeKioskBookModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL POPUP FILTER KOLEKSI KIOSK (MULTI-FILTER) -->
+  <div class="modal-backdrop" id="kioskFilterModal">
+    <div class="modal-dialog modal-dialog-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <i class="fa-solid fa-sliders modal-icon-accent"></i>
+          <div>
+            <h3 class="modal-title">Filter Koleksi di Rak</h3>
+            <span class="modal-subtitle">Pilih kategori, program studi, dan rentang tahun terbit</span>
+          </div>
+        </div>
+        <button class="modal-close" onclick="closeKioskFilterModal()">&times;</button>
+      </div>
+
+      <div class="modal-body filter-modal-scrollable">
+
+        <!-- SEKSI 1: KATEGORI & GENRE BUKU -->
+        <div class="filter-modal-section">
+          <div class="filter-modal-section-header">
+            <div>
+              <span class="filter-section-title"><i class="fa-solid fa-layer-group"></i> Kategori & Genre Koleksi</span>
+              <span class="filter-section-desc">Pilih satu atau beberapa kategori (Novel/Fiksi, Teknologi, Skripsi, dll)</span>
+            </div>
+            <button type="button" class="btn-toggle-all-chip" onclick="toggleAllKioskCategories()">Pilih Semua / Bersihkan</button>
+          </div>
+          <div class="filter-chips-grid" id="kioskCategoryCheckboxList">
+            <!-- Diisi dinamis via JS -->
+          </div>
+        </div>
+
+        <!-- SEKSI 2: PROGRAM STUDI -->
+        <div class="filter-modal-section" id="kioskProdiFilterSection">
+          <div class="filter-modal-section-header">
+            <div>
+              <span class="filter-section-title"><i class="fa-solid fa-graduation-cap"></i> Program Studi</span>
+              <span class="filter-section-desc">Pilih prodi jika ingin menyaring skripsi dari jurusan tertentu</span>
+            </div>
+            <button type="button" class="btn-toggle-all-chip" onclick="toggleAllKioskProdis()">Pilih Semua / Bersihkan</button>
+          </div>
+          <div class="filter-chips-grid" id="kioskProdiCheckboxList">
+            <!-- Diisi dinamis via JS -->
+          </div>
+        </div>
+
+        <!-- SEKSI 3: RENTANG TAHUN TERBIT -->
+        <div class="filter-modal-section" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+          <div class="filter-modal-section-header">
+            <div>
+              <span class="filter-section-title"><i class="fa-regular fa-calendar-days"></i> Tahun Terbit</span>
+              <span class="filter-section-desc">Ketik tahun sesuai kebutuhan atau pilih opsi tahun di bawah</span>
+            </div>
+          </div>
+          
+          <div class="year-filter-box">
+            <div class="year-custom-inputs-row">
+              <div class="year-input-wrap">
+                <label for="kioskFilterYearFrom">Tahun Mulai (Dari):</label>
+                <input type="number" id="kioskFilterYearFrom" class="year-range-field" placeholder="1990" min="1900" max="2099">
+              </div>
+              <div class="year-range-divider">
+                <span>s/d</span>
+              </div>
+              <div class="year-input-wrap">
+                <label for="kioskFilterYearTo">Tahun Akhir (Sampai):</label>
+                <input type="number" id="kioskFilterYearTo" class="year-range-field" placeholder="2026" min="1900" max="2099">
+              </div>
+            </div>
+
+            <div class="year-presets-container">
+              <span class="presets-label">Pilihan Tahun:</span>
+              <div class="year-quick-presets" id="kioskYearQuickPresets">
+                <!-- Di-render dinamis via JavaScript sesuai tahun saat ini -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer filter-modal-footer">
+        <button type="button" class="btn-secondary" onclick="resetAllKioskFiltersFromModal()">
+          <i class="fa-solid fa-rotate-left"></i> Reset Filter
+        </button>
+        <button type="button" class="btn-primary" onclick="applyKioskFilterModal()">
+          <i class="fa-solid fa-check"></i> Terapkan Filter
+        </button>
       </div>
     </div>
   </div>

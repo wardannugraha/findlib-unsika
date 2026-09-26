@@ -1,13 +1,40 @@
 // ==============================================================================
-// 📍 FINDLIB UNSIKA - KIOSK ON-SITE JAVASCRIPT (READ-ONLY SEARCH & LOCATE)
+// 📍 FINDLIB UNSIKA - KIOSK ON-SITE JAVASCRIPT (SEARCH, FILTER & SMART RACK LOCATE)
 // ==============================================================================
-// FindLib UNSIKA (Find your Library) - Terminal pencarian buku & penunjuk rak LED.
+// FindLib UNSIKA (Find your Library) - Terminal Navigasi Rak Buku & IoT
+// Sistem Filter Popup Modal Terpadu (Multi-Category, Multi-Prodi, Custom Year)
 // ==============================================================================
 
-let currentKioskCategory = 'ALL';
+// State Filter Aktif Kiosk
+let selectedKioskCategories = new Set();
+let selectedKioskProdis = new Set();
+let kioskYearFromVal = '';
+let kioskYearToVal = '';
+let currentKioskSearchQuery = '';
+
+// Draft state di dalam Modal Filter
+let tempKioskCategories = new Set();
+let tempKioskProdis = new Set();
+let tempKioskYearFrom = '';
+let tempKioskYearTo = '';
+
+// Data Store
 let kioskBooks = [];
+let rawKioskCategories = [];
+let rawKioskProdis = [];
 let countdownInterval = null;
 let isRackVisible = true;
+
+// Utility Escape HTML
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 // Buka / Tutup Panel Miniatur Rak Buku
 function toggleVirtualRack(forceState) {
@@ -59,23 +86,65 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   checkMqttStatus();
-  loadKioskCategories();
-  loadKioskBooks();
+  initKioskModalBackdropEvents();
+  initKioskSearchEvents();
 
-  // Search Listeners
+  await Promise.all([
+    loadKioskCategories(),
+    loadKioskProdi()
+  ]);
+
+  loadKioskBooks();
+});
+
+// Modal Backdrop Click & ESC key handler
+function initKioskModalBackdropEvents() {
+  window.addEventListener('click', (e) => {
+    const filterModal = document.getElementById('kioskFilterModal');
+    const bookModal = document.getElementById('kioskBookDetailModal');
+
+    if (e.target === filterModal) {
+      closeKioskFilterModal();
+    }
+    if (e.target === bookModal) {
+      closeKioskBookModal();
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeKioskFilterModal();
+      closeKioskBookModal();
+    }
+  });
+}
+
+// Search Events Listener
+function initKioskSearchEvents() {
   const searchInput = document.getElementById('kioskSearchInput');
   const searchBtn = document.getElementById('kioskSearchBtn');
 
-  searchBtn.addEventListener('click', () => {
-    loadKioskBooks(searchInput.value.trim());
-  });
+  if (searchBtn) {
+    searchBtn.addEventListener('click', () => {
+      currentKioskSearchQuery = searchInput.value.trim();
+      loadKioskBooks();
+    });
+  }
 
-  searchInput.addEventListener('keyup', (e) => {
-    if (e.key === 'Enter') {
-      loadKioskBooks(searchInput.value.trim());
-    }
-  });
-});
+  if (searchInput) {
+    searchInput.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter') {
+        currentKioskSearchQuery = searchInput.value.trim();
+        loadKioskBooks();
+      }
+    });
+  }
+
+  const yf = document.getElementById('kioskFilterYearFrom');
+  const yt = document.getElementById('kioskFilterYearTo');
+  if (yf) yf.addEventListener('input', renderKioskYearPresets);
+  if (yt) yt.addEventListener('input', renderKioskYearPresets);
+}
 
 // Cek Status MQTT & Status Mode Demo IoT
 async function checkMqttStatus() {
@@ -87,14 +156,16 @@ async function checkMqttStatus() {
     const demoPill = document.getElementById('kioskDemoPill');
     const demoText = document.getElementById('kioskDemoText');
 
-    if (data.mqtt.status === 'CONNECTED') {
-      pill.style.background = 'rgba(16, 185, 129, 0.2)';
-      pill.style.color = '#34D399';
-      text.textContent = 'Rak LED Online';
-    } else {
-      pill.style.background = 'rgba(245, 158, 11, 0.2)';
-      pill.style.color = '#FBBF24';
-      text.textContent = 'Rak LED Siap';
+    if (pill && text) {
+      if (data.mqtt && data.mqtt.status === 'CONNECTED') {
+        pill.style.background = 'rgba(16, 185, 129, 0.2)';
+        pill.style.color = '#34D399';
+        text.textContent = 'Rak LED Online';
+      } else {
+        pill.style.background = 'rgba(245, 158, 11, 0.2)';
+        pill.style.color = '#FBBF24';
+        text.textContent = 'Rak LED Siap';
+      }
     }
 
     if (demoPill && data.demoMode && data.demoMode.enabled) {
@@ -104,7 +175,8 @@ async function checkMqttStatus() {
       demoPill.style.display = 'none';
     }
   } catch (e) {
-    document.getElementById('mqttStatusText').textContent = 'Standby';
+    const text = document.getElementById('mqttStatusText');
+    if (text) text.textContent = 'Standby';
   }
 }
 
@@ -112,46 +184,432 @@ async function checkMqttStatus() {
 async function loadKioskCategories() {
   try {
     const res = await fetch('/api/categories');
-    const categories = await res.json();
-
-    const select = document.getElementById('kioskCategorySelect');
-    if (!select) return;
-
-    let html = `<option value="ALL">📚 Semua Kategori</option>`;
-    categories.forEach(cat => {
-      html += `<option value="${cat.id}">${cat.name}</option>`;
-    });
-
-    select.innerHTML = html;
-    select.value = currentKioskCategory;
+    rawKioskCategories = await res.json();
+    renderKioskCategoryChips();
   } catch (err) {
     console.error('Error load categories:', err);
   }
 }
 
-function selectKioskCategory(catId) {
-  currentKioskCategory = catId;
-  const searchVal = document.getElementById('kioskSearchInput').value.trim();
-  loadKioskBooks(searchVal);
+// Ambil Daftar Program Studi Dinamis
+async function loadKioskProdi() {
+  try {
+    const res = await fetch('/api/prodi');
+    const data = await res.json();
+    rawKioskProdis = Array.isArray(data) ? data : (data.active || data.all || []);
+    renderKioskProdiChips();
+  } catch (err) {
+    console.error('Error load prodi:', err);
+  }
+}
+
+// BUKA MODAL FILTER KIOSK
+function openKioskFilterModal() {
+  tempKioskCategories = new Set(selectedKioskCategories);
+  tempKioskProdis = new Set(selectedKioskProdis);
+  tempKioskYearFrom = kioskYearFromVal;
+  tempKioskYearTo = kioskYearToVal;
+
+  const yf = document.getElementById('kioskFilterYearFrom');
+  if (yf) yf.value = tempKioskYearFrom;
+
+  const yt = document.getElementById('kioskFilterYearTo');
+  if (yt) yt.value = tempKioskYearTo;
+
+  renderKioskCategoryChips();
+  renderKioskProdiChips();
+  renderKioskYearPresets();
+
+  const modal = document.getElementById('kioskFilterModal');
+  if (modal) modal.classList.add('open');
+}
+
+// TUTUP MODAL FILTER KIOSK
+function closeKioskFilterModal() {
+  const modal = document.getElementById('kioskFilterModal');
+  if (modal) modal.classList.remove('open');
+}
+
+// TERAPKAN FILTER DARI MODAL KIOSK
+function applyKioskFilterModal() {
+  const yf = document.getElementById('kioskFilterYearFrom');
+  const yt = document.getElementById('kioskFilterYearTo');
+
+  selectedKioskCategories = new Set(tempKioskCategories);
+  selectedKioskProdis = new Set(tempKioskProdis);
+  kioskYearFromVal = yf ? yf.value.trim() : '';
+  kioskYearToVal = yt ? yt.value.trim() : '';
+
+  closeKioskFilterModal();
+  loadKioskBooks();
+}
+
+// RESET FILTER DARI DALAM MODAL KIOSK
+function resetAllKioskFiltersFromModal() {
+  tempKioskCategories.clear();
+  tempKioskProdis.clear();
+
+  const yf = document.getElementById('kioskFilterYearFrom');
+  if (yf) yf.value = '';
+
+  const yt = document.getElementById('kioskFilterYearTo');
+  if (yt) yt.value = '';
+
+  renderKioskCategoryChips();
+  renderKioskProdiChips();
+  renderKioskYearPresets();
+}
+
+// RESET SEMUA FILTER LENGKAP KIOSK
+function resetAllKioskFilters() {
+  selectedKioskCategories.clear();
+  selectedKioskProdis.clear();
+  tempKioskCategories.clear();
+  tempKioskProdis.clear();
+  kioskYearFromVal = '';
+  kioskYearToVal = '';
+  currentKioskSearchQuery = '';
+
+  const searchInput = document.getElementById('kioskSearchInput');
+  if (searchInput) searchInput.value = '';
+
+  const yf = document.getElementById('kioskFilterYearFrom');
+  if (yf) yf.value = '';
+
+  const yt = document.getElementById('kioskFilterYearTo');
+  if (yt) yt.value = '';
+
+  renderKioskCategoryChips();
+  renderKioskProdiChips();
+  loadKioskBooks();
+}
+
+// Render Chip Kategori Kiosk
+function renderKioskCategoryChips() {
+  const container = document.getElementById('kioskCategoryCheckboxList');
+  if (!container) return;
+
+  if (rawKioskCategories.length === 0) {
+    container.innerHTML = '<div class="filter-empty-msg">Tidak ada kategori tersedia</div>';
+    return;
+  }
+
+  container.innerHTML = rawKioskCategories.map(cat => {
+    const isChecked = tempKioskCategories.has(cat.id);
+
+    return `
+      <div class="filter-chip-card ${isChecked ? 'active' : ''}" onclick="toggleTempKioskCategory('${cat.id}')">
+        <span class="chip-checkbox-box"><i class="fa-solid fa-check"></i></span>
+        <span class="chip-label" title="${escapeHtml(cat.name)}">${escapeHtml(cat.name)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// Render Chip Prodi Kiosk
+function renderKioskProdiChips() {
+  const container = document.getElementById('kioskProdiCheckboxList');
+  if (!container) return;
+
+  if (rawKioskProdis.length === 0) {
+    container.innerHTML = '<div class="filter-empty-msg">Tidak ada data program studi</div>';
+    return;
+  }
+
+  container.innerHTML = rawKioskProdis.map(p => {
+    const isChecked = tempKioskProdis.has(p);
+
+    return `
+      <div class="filter-chip-card ${isChecked ? 'active' : ''}" onclick="toggleTempKioskProdi('${escapeHtml(p)}')">
+        <span class="chip-checkbox-box"><i class="fa-solid fa-check"></i></span>
+        <span class="chip-label" title="${escapeHtml(p)}">${escapeHtml(p)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// Toggle Kategori di dalam Modal Kiosk
+function toggleTempKioskCategory(catId) {
+  if (tempKioskCategories.has(catId)) {
+    tempKioskCategories.delete(catId);
+  } else {
+    tempKioskCategories.add(catId);
+  }
+  renderKioskCategoryChips();
+}
+
+// Toggle Prodi di dalam Modal Kiosk
+function toggleTempKioskProdi(prodiName) {
+  if (tempKioskProdis.has(prodiName)) {
+    tempKioskProdis.delete(prodiName);
+  } else {
+    tempKioskProdis.add(prodiName);
+  }
+  renderKioskProdiChips();
+}
+
+// Pilih Semua / Batal Semua Kategori Kiosk
+function toggleAllKioskCategories() {
+  const allSelected = rawKioskCategories.every(c => tempKioskCategories.has(c.id));
+
+  if (allSelected) {
+    tempKioskCategories.clear();
+  } else {
+    rawKioskCategories.forEach(c => tempKioskCategories.add(c.id));
+  }
+  renderKioskCategoryChips();
+}
+
+// Pilih Semua / Batal Semua Prodi Kiosk
+function toggleAllKioskProdis() {
+  const allSelected = rawKioskProdis.every(p => tempKioskProdis.has(p));
+
+  if (allSelected) {
+    tempKioskProdis.clear();
+  } else {
+    rawKioskProdis.forEach(p => tempKioskProdis.add(p));
+  }
+  renderKioskProdiChips();
+}
+
+// Render Dynamic Preset Tahun Kiosk berdasarkan Tahun Berjalan (new Date().getFullYear())
+function renderKioskYearPresets() {
+  const container = document.getElementById('kioskYearQuickPresets');
+  if (!container) return;
+
+  const currentYear = new Date().getFullYear();
+  const yf = document.getElementById('kioskFilterYearFrom');
+  const yt = document.getElementById('kioskFilterYearTo');
+  if (yt && !yt.getAttribute('placeholder')) yt.setAttribute('placeholder', currentYear);
+
+  const presets = [
+    { label: 'Semua Tahun', from: null, to: null },
+    { label: `Tahun ${currentYear}`, from: currentYear, to: currentYear },
+    { label: '1 Tahun Terakhir', from: currentYear - 1, to: currentYear },
+    { label: '3 Tahun Terakhir', from: currentYear - 3, to: currentYear },
+    { label: '5 Tahun Terakhir', from: currentYear - 5, to: currentYear },
+    { label: '10 Tahun Terakhir', from: currentYear - 10, to: currentYear }
+  ];
+
+  const currentFrom = yf ? yf.value.trim() : '';
+  const currentTo = yt ? yt.value.trim() : '';
+
+  container.innerHTML = presets.map(p => {
+    let isActive = false;
+    if (p.from === null && p.to === null) {
+      isActive = !currentFrom && !currentTo;
+    } else if (p.from !== null && p.to !== null) {
+      isActive = String(p.from) === currentFrom && String(p.to) === currentTo;
+    }
+
+    const fromParam = p.from !== null ? p.from : 'null';
+    const toParam = p.to !== null ? p.to : 'null';
+
+    return `
+      <button type="button" class="btn-preset-chip ${isActive ? 'active' : ''}" onclick="setKioskYearPreset(${fromParam}, ${toParam})">
+        ${p.label}
+      </button>
+    `;
+  }).join('');
+}
+
+// Quick Preset Tahun Kiosk
+function setKioskYearPreset(from, to) {
+  const yf = document.getElementById('kioskFilterYearFrom');
+  const yt = document.getElementById('kioskFilterYearTo');
+  if (yf) yf.value = from !== null && from !== undefined ? from : '';
+  if (yt) yt.value = to !== null && to !== undefined ? to : '';
+
+  renderKioskYearPresets();
+}
+
+// Update Indikator Angka Filter Aktif pada Tombol "Filter Koleksi" Kiosk
+function updateKioskFilterActiveBadge() {
+  let activeCount = 0;
+  activeCount += selectedKioskCategories.size;
+  activeCount += selectedKioskProdis.size;
+  if (kioskYearFromVal || kioskYearToVal) activeCount += 1;
+
+  const badge = document.getElementById('kioskFilterIndicatorBadge');
+  const btn = document.getElementById('btnKioskFilterModal');
+
+  if (badge && btn) {
+    if (activeCount > 0) {
+      badge.textContent = activeCount;
+      badge.style.display = 'inline-flex';
+      btn.classList.add('has-active-filters');
+    } else {
+      badge.style.display = 'none';
+      btn.classList.remove('has-active-filters');
+    }
+  }
+}
+
+// Render Active Filter Pills Kiosk (Tags di atas katalog)
+function renderKioskActiveFilterPills() {
+  const container = document.getElementById('kioskActiveFilterPills');
+  if (!container) return;
+
+  const pills = [];
+
+  // Query search pill
+  if (currentKioskSearchQuery) {
+    pills.push(`
+      <span class="filter-pill">
+        <i class="fa-solid fa-magnifying-glass"></i> "${escapeHtml(currentKioskSearchQuery)}"
+        <button type="button" class="pill-remove-btn" onclick="clearKioskSearchFilter()" title="Hapus kata kunci">&times;</button>
+      </span>
+    `);
+  }
+
+  // Category pills
+  selectedKioskCategories.forEach(catId => {
+    const catObj = rawKioskCategories.find(c => c.id === catId);
+    const catName = catObj ? catObj.name : catId;
+    pills.push(`
+      <span class="filter-pill category-pill">
+        <i class="fa-solid fa-tag"></i> ${escapeHtml(catName)}
+        <button type="button" class="pill-remove-btn" onclick="removeKioskCategoryFilter('${catId}')" title="Hapus filter kategori">&times;</button>
+      </span>
+    `);
+  });
+
+  // Prodi pills
+  selectedKioskProdis.forEach(prodi => {
+    pills.push(`
+      <span class="filter-pill prodi-pill">
+        <i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(prodi)}
+        <button type="button" class="pill-remove-btn" onclick="removeKioskProdiFilter('${escapeHtml(prodi)}')" title="Hapus filter prodi">&times;</button>
+      </span>
+    `);
+  });
+
+  // Year Range pill
+  if (kioskYearFromVal || kioskYearToVal) {
+    let yearLabel = '';
+    if (kioskYearFromVal && kioskYearToVal) {
+      if (kioskYearFromVal === kioskYearToVal) {
+        yearLabel = `${kioskYearFromVal}`;
+      } else {
+        yearLabel = `${kioskYearFromVal} - ${kioskYearToVal}`;
+      }
+    } else if (kioskYearFromVal) {
+      yearLabel = `≥ ${kioskYearFromVal}`;
+    } else if (kioskYearToVal) {
+      yearLabel = `≤ ${kioskYearToVal}`;
+    }
+    pills.push(`
+      <span class="filter-pill year-pill">
+        <i class="fa-regular fa-calendar"></i> Tahun: ${yearLabel}
+        <button type="button" class="pill-remove-btn" onclick="clearKioskYearFilter()" title="Hapus filter tahun">&times;</button>
+      </span>
+    `);
+  }
+
+  if (pills.length > 0) {
+    container.innerHTML = `
+      <div class="active-pills-list">
+        <span class="active-pills-label"><i class="fa-solid fa-filter"></i> Filter Aktif:</span>
+        ${pills.join('')}
+      </div>
+      <button type="button" class="btn-clear-all-pills" onclick="resetAllKioskFilters()">
+        <i class="fa-solid fa-rotate-left"></i> Reset Filter
+      </button>
+    `;
+    container.style.display = 'flex';
+  } else {
+    container.innerHTML = '';
+    container.style.display = 'none';
+  }
+}
+
+function removeKioskCategoryFilter(catId) {
+  selectedKioskCategories.delete(catId);
+  tempKioskCategories.delete(catId);
+  loadKioskBooks();
+}
+
+function removeKioskProdiFilter(prodiName) {
+  selectedKioskProdis.delete(prodiName);
+  tempKioskProdis.delete(prodiName);
+  loadKioskBooks();
+}
+
+function clearKioskSearchFilter() {
+  currentKioskSearchQuery = '';
+  const searchInput = document.getElementById('kioskSearchInput');
+  if (searchInput) searchInput.value = '';
+  loadKioskBooks();
+}
+
+function clearKioskYearFilter() {
+  kioskYearFromVal = '';
+  kioskYearToVal = '';
+  tempKioskYearFrom = '';
+  tempKioskYearTo = '';
+  const yf = document.getElementById('kioskFilterYearFrom');
+  if (yf) yf.value = '';
+  const yt = document.getElementById('kioskFilterYearTo');
+  if (yt) yt.value = '';
+  loadKioskBooks();
 }
 
 // Ambil Buku untuk Kiosk
-async function loadKioskBooks(query = '') {
+async function loadKioskBooks(query = null) {
   const grid = document.getElementById('kioskBookGrid');
   const countText = document.getElementById('kioskBookCount');
-  grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: #64748B;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat buku...</div>';
+
+  if (query !== null) {
+    currentKioskSearchQuery = query;
+  }
+
+  updateKioskFilterActiveBadge();
+  renderKioskActiveFilterPills();
+
+  if (grid) {
+    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: #64748B;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat buku...</div>';
+  }
 
   try {
-    let url = `/api/books?category=${currentKioskCategory}`;
-    if (query) url += `&q=${encodeURIComponent(query)}`;
+    const params = new URLSearchParams();
+
+    if (selectedKioskCategories.size > 0) {
+      params.append('categories', Array.from(selectedKioskCategories).join(','));
+    }
+    if (selectedKioskProdis.size > 0) {
+      params.append('prodis', Array.from(selectedKioskProdis).join(','));
+    }
+    if (kioskYearFromVal) {
+      params.append('year_from', kioskYearFromVal);
+    }
+    if (kioskYearToVal) {
+      params.append('year_to', kioskYearToVal);
+    }
+    if (currentKioskSearchQuery) {
+      params.append('q', currentKioskSearchQuery);
+    }
+
+    const queryString = params.toString();
+    const url = `/api/books${queryString ? `?${queryString}` : ''}`;
 
     const res = await fetch(url);
     kioskBooks = await res.json();
 
-    countText.textContent = `${kioskBooks.length} buku`;
+    if (countText) {
+      countText.textContent = `${kioskBooks.length} buku`;
+    }
 
     if (kioskBooks.length === 0) {
-      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 30px; background: white; border-radius: 8px; color: #64748B;">Tidak ada buku yang cocok dengan pencarian Anda.</div>';
+      grid.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; padding: 40px 20px; background: white; border-radius: var(--radius-lg); border: 1px dashed var(--border-medium); color: var(--text-muted);">
+          <i class="fa-solid fa-book-open" style="font-size: 2rem; color: #CBD5E1; margin-bottom: 12px; display: block;"></i>
+          <h4 style="font-size: 1rem; color: var(--text-primary); margin-bottom: 4px;">Tidak ada koleksi ditemukan</h4>
+          <p style="font-size: 0.85rem;">Coba sesuaikan kata kunci, kategori, atau rentang tahun pada filter.</p>
+          <button type="button" class="btn-secondary" style="margin-top: 14px;" onclick="resetAllKioskFilters()">
+            <i class="fa-solid fa-rotate-left"></i> Reset Filter
+          </button>
+        </div>
+      `;
       return;
     }
 
@@ -174,7 +632,13 @@ async function loadKioskBooks(query = '') {
             <h3 class="book-title" title="${book.title}">${book.title}</h3>
             <div class="book-author"><i class="fa-solid fa-user-pen"></i> ${book.author}</div>
             
-            <div class="book-meta-sub">
+            ${book.prodi ? `
+              <div style="margin-top: 6px;">
+                <span class="badge-prodi"><i class="fa-solid fa-graduation-cap"></i> ${book.prodi}</span>
+              </div>
+            ` : ''}
+
+            <div class="book-meta-sub" style="margin-top: 6px;">
               ${book.publisher ? `<span>${book.publisher}</span>` : ''} 
               ${book.publish_year ? `<span>(${book.publish_year})</span>` : ''}
             </div>
@@ -225,6 +689,7 @@ function openKioskBookModal(bookId) {
         <p style="font-size: 0.85rem; color: #64748B; margin-bottom: 4px;">Kode Buku: <strong>${book.id}</strong></p>
         <p style="font-size: 0.85rem; color: #64748B; margin-bottom: 4px;">ISBN: <strong>${book.isbn || '-'}</strong></p>
         <p style="font-size: 0.85rem; color: #64748B; margin-bottom: 4px;">Penulis: <strong>${book.author}</strong></p>
+        ${book.prodi ? `<p style="font-size: 0.85rem; color: #1E40AF; margin-bottom: 4px;">Program Studi: <strong class="badge-prodi"><i class="fa-solid fa-graduation-cap"></i> ${book.prodi}</strong></p>` : ''}
         <p style="font-size: 0.85rem; color: #64748B; margin-bottom: 4px;">Penerbit: <strong>${book.publisher || '-'} ${book.publish_year ? `(${book.publish_year})` : ''}</strong></p>
         <p style="font-size: 0.85rem; color: #64748B; margin-bottom: 4px;">Halaman: <strong>${book.page_count ? book.page_count + ' Halaman' : '-'}</strong></p>
         <p style="font-size: 0.85rem; color: #64748B; margin-bottom: 4px;">Kategori: <strong style="color: ${book.color_hex};">${book.category_name || 'Umum'}</strong></p>
@@ -321,8 +786,8 @@ async function triggerLocateBook(bookId) {
     const bookNameText = document.getElementById('activeBookName');
     const timerText = document.getElementById('countdownTimer');
 
-    statusBox.style.display = 'block';
-    bookNameText.textContent = `"${book.title}" (Tingkat ${book.level_number}, Slot #${book.led_slot})`;
+    if (statusBox) statusBox.style.display = 'block';
+    if (bookNameText) bookNameText.textContent = `"${book.title}" (Tingkat ${book.level_number}, Slot #${book.led_slot})`;
 
     // Tahap 1: Highlight Baris / Zona
     if (tierElem) {
@@ -340,16 +805,16 @@ async function triggerLocateBook(bookId) {
 
     // Tahap 3: Countdown Timer
     let remaining = payload.duration_seconds || 15;
-    timerText.textContent = remaining;
+    if (timerText) timerText.textContent = remaining;
 
     countdownInterval = setInterval(() => {
       remaining--;
-      timerText.textContent = remaining;
+      if (timerText) timerText.textContent = remaining;
 
       if (remaining <= 0) {
         clearInterval(countdownInterval);
         resetVirtualRack();
-        statusBox.style.display = 'none';
+        if (statusBox) statusBox.style.display = 'none';
       }
     }, 1000);
 

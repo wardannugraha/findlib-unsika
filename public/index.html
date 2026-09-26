@@ -53,26 +53,30 @@
     </div>
   </header>
 
-  <!-- MAIN CATALOG CONTENT -->
-  <main class="container">
+  <!-- MAIN CATALOG CONTENT (FULL-WIDTH CLEAN LAYOUT) -->
+  <main class="container catalog-full-wrapper">
 
-    <!-- CATALOG HEADER & FILTER BAR -->
-    <div class="catalog-filter-bar">
-      <div class="catalog-header-left">
-        <h2 class="section-title">Daftar Koleksi</h2>
-        <span class="catalog-count" id="bookCountText">Memuat koleksi...</span>
+    <!-- CATALOG ACTION & TOOLBAR -->
+    <div class="catalog-toolbar-card">
+      <div class="catalog-toolbar-main">
+        <div class="catalog-results-info">
+          <h2 class="section-title">Daftar Koleksi Perpustakaan</h2>
+          <span class="catalog-count" id="bookCountText">Memuat koleksi...</span>
+        </div>
+
+        <div class="catalog-toolbar-actions">
+          <!-- TOMBOL POPUP FILTER DENGAN INDIKATOR AKTIF -->
+          <button type="button" class="btn-filter-trigger" id="btnOpenFilterModal" onclick="openFilterModal()">
+            <i class="fa-solid fa-sliders"></i>
+            <span>Filter Koleksi</span>
+            <span class="filter-indicator-badge" id="filterIndicatorBadge" style="display: none;">0</span>
+          </button>
+        </div>
       </div>
 
-      <div class="category-dropdown-wrap">
-        <label for="categorySelect" class="category-select-label">
-          <i class="fa-solid fa-filter"></i> Kategori:
-        </label>
-        <div class="custom-select-container">
-          <select id="categorySelect" class="custom-category-select" onchange="selectCategory(this.value)">
-            <option value="ALL">Semua Kategori</option>
-          </select>
-          <i class="fa-solid fa-chevron-down select-chevron"></i>
-        </div>
+      <!-- ACTIVE FILTER TAGS (PILLS) -->
+      <div class="active-filter-pills" id="activeFilterPills" style="display: none;">
+        <!-- Diisi via JS: [Fiksi ✕] [Informatika ✕] -->
       </div>
     </div>
 
@@ -82,6 +86,96 @@
     </div>
 
   </main>
+
+  <!-- MODAL POPUP FILTER KOLEKSI (UNIFIED MULTI-FILTER) -->
+  <div class="modal-backdrop" id="catalogFilterModal">
+    <div class="modal-dialog modal-dialog-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <i class="fa-solid fa-sliders modal-icon-accent"></i>
+          <div>
+            <h3 class="modal-title">Filter Koleksi Perpustakaan</h3>
+            <span class="modal-subtitle">Pilih kategori, program studi, dan rentang tahun terbit</span>
+          </div>
+        </div>
+        <button class="modal-close" onclick="closeFilterModal()">&times;</button>
+      </div>
+
+      <div class="modal-body filter-modal-scrollable">
+
+        <!-- SEKSI 1: KATEGORI & GENRE BUKU -->
+        <div class="filter-modal-section">
+          <div class="filter-modal-section-header">
+            <div>
+              <span class="filter-section-title"><i class="fa-solid fa-layer-group"></i> Kategori & Genre Koleksi</span>
+              <span class="filter-section-desc">Pilih satu atau beberapa kategori (Novel/Fiksi, Teknologi, Skripsi, dll)</span>
+            </div>
+            <button type="button" class="btn-toggle-all-chip" onclick="toggleAllCategories()">Pilih Semua / Bersihkan</button>
+          </div>
+          <div class="filter-chips-grid" id="categoryCheckboxList">
+            <!-- Diisi dinamis via JS -->
+          </div>
+        </div>
+
+        <!-- SEKSI 2: PROGRAM STUDI -->
+        <div class="filter-modal-section" id="prodiFilterSection">
+          <div class="filter-modal-section-header">
+            <div>
+              <span class="filter-section-title"><i class="fa-solid fa-graduation-cap"></i> Program Studi</span>
+              <span class="filter-section-desc">Pilih prodi jika ingin menyaring skripsi dari jurusan tertentu</span>
+            </div>
+            <button type="button" class="btn-toggle-all-chip" onclick="toggleAllProdis()">Pilih Semua / Bersihkan</button>
+          </div>
+          <div class="filter-chips-grid" id="prodiCheckboxList">
+            <!-- Diisi dinamis via JS -->
+          </div>
+        </div>
+
+        <!-- SEKSI 3: RENTANG TAHUN TERBIT -->
+        <div class="filter-modal-section" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+          <div class="filter-modal-section-header">
+            <div>
+              <span class="filter-section-title"><i class="fa-regular fa-calendar-days"></i> Tahun Terbit</span>
+              <span class="filter-section-desc">Ketik tahun sesuai kebutuhan atau pilih opsi tahun di bawah</span>
+            </div>
+          </div>
+          
+          <div class="year-filter-box">
+            <div class="year-custom-inputs-row">
+              <div class="year-input-wrap">
+                <label for="filterYearFrom">Tahun Mulai (Dari):</label>
+                <input type="number" id="filterYearFrom" class="year-range-field" placeholder="1990" min="1900" max="2099">
+              </div>
+              <div class="year-range-divider">
+                <span>s/d</span>
+              </div>
+              <div class="year-input-wrap">
+                <label for="filterYearTo">Tahun Akhir (Sampai):</label>
+                <input type="number" id="filterYearTo" class="year-range-field" placeholder="2026" min="1900" max="2099">
+              </div>
+            </div>
+
+            <div class="year-presets-container">
+              <span class="presets-label">Pilihan Tahun:</span>
+              <div class="year-quick-presets" id="yearQuickPresets">
+                <!-- Di-render dinamis via JavaScript sesuai tahun saat ini -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer filter-modal-footer">
+        <button type="button" class="btn-secondary" onclick="resetAllFiltersFromModal()">
+          <i class="fa-solid fa-rotate-left"></i> Reset Filter
+        </button>
+        <button type="button" class="btn-primary" onclick="applyFilterModal()">
+          <i class="fa-solid fa-check"></i> Terapkan Filter
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- MODAL DETAIL BUKU & SINOPSIS (PUBLIK) -->
   <div class="modal-backdrop" id="bookDetailModal">

@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS books (
     page_count INT,                       -- Jumlah Halaman (contoh: 376)
     synopsis TEXT,                        -- Sinopsis / Ringkasan Buku
     category_id VARCHAR(50) REFERENCES categories(id) ON DELETE RESTRICT,
+    prodi VARCHAR(100),                   -- Program Studi (khusus Skripsi / Tugas Akhir)
     rack_id VARCHAR(50) REFERENCES racks(id) ON DELETE CASCADE,
     led_slot INT NOT NULL,                -- Titik spesifik lampu LED WS2812B
     cover_url TEXT,                       -- Link URL Gambar Sampul
@@ -54,6 +55,14 @@ CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
 CREATE INDEX IF NOT EXISTS idx_books_category ON books(category_id);
 CREATE INDEX IF NOT EXISTS idx_books_isbn ON books(isbn);
 CREATE INDEX IF NOT EXISTS idx_books_is_demo ON books(is_demo);
+CREATE INDEX IF NOT EXISTS idx_books_prodi ON books(prodi);
+
+-- 3.1 TABEL MASTER PROGRAM STUDI
+CREATE TABLE IF NOT EXISTS study_programs (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- 4. TABEL DATA MAHASISWA / ANGGOTA PERPUSTAKAAN
 CREATE TABLE IF NOT EXISTS members (
