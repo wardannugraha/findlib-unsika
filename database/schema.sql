@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS books (
     rack_id VARCHAR(50) REFERENCES racks(id) ON DELETE CASCADE,
     led_slot INT NOT NULL,                -- Titik spesifik lampu LED WS2812B
     cover_url TEXT,                       -- Link URL Gambar Sampul
+    cover_public_id TEXT,                 -- Cloudinary Public ID untuk penghapusan otomatis
     total_stock INT DEFAULT 1,            -- Total Buku Fisik
     available_stock INT DEFAULT 1,        -- Jumlah Buku yang Tersedia
     borrowed_count INT DEFAULT 0,         -- Jumlah Buku yang Sedang Dipinjam
@@ -114,4 +115,23 @@ INSERT INTO app_settings (key, value, description) VALUES
     ('library_name', 'UPT Perpustakaan UNSIKA', 'Nama resmi institusi perpustakaan'),
     ('library_hours', 'Senin - Jumat: 08.00 - 16.00 WIB', 'Jam operasional layanan sirkulasi perpustakaan')
 ON CONFLICT (key) DO NOTHING;
+
+-- 7. TABEL STRUKTUR ORGANISASI & PROFIL TIM (ABOUT)
+CREATE TABLE IF NOT EXISTS organization_members (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    role_title VARCHAR(100) NOT NULL,
+    division VARCHAR(100) DEFAULT 'Pengurus',
+    photo_url TEXT,
+    photo_public_id TEXT,
+    bio TEXT,
+    display_order INT DEFAULT 0,
+    social_links JSONB DEFAULT '{}',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_order ON organization_members(display_order);
+CREATE INDEX IF NOT EXISTS idx_org_division ON organization_members(division);
 

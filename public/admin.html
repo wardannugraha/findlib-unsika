@@ -834,15 +834,49 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Link URL Gambar Cover Buku (Open URL)</label>
-            <input type="url" id="bookCoverUrl" class="form-control" placeholder="https://images.unsplash.com/..."
-              oninput="previewCoverImage(this.value)">
-            <div style="display: flex; gap: 14px; align-items: center; margin-top: 8px;">
-              <div class="cover-preview-box" id="coverPreviewBox">
-                <span style="font-size: 0.75rem; color: #94A3B8; text-align: center;">No Preview</span>
+            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>Sampul / Cover Buku</span>
+              <span style="font-size: 0.75rem; font-weight: 500; color: #0284C7; display: flex; align-items: center; gap: 4px;">
+                <i class="fa-solid fa-cloud"></i> Cloudinary CDN
+              </span>
+            </label>
+
+            <!-- Hidden Inputs for URL and Public ID -->
+            <input type="hidden" id="bookCoverUrl" value="">
+            <input type="hidden" id="bookCoverPublicId" value="">
+
+            <!-- Upload Area & Preview Container -->
+            <div class="upload-cover-container" style="display: flex; gap: 16px; align-items: stretch; background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 12px; padding: 14px; transition: all 0.2s ease;" id="coverDropZone">
+              
+              <!-- Preview Box -->
+              <div class="cover-preview-box" id="coverPreviewBox" style="width: 80px; height: 110px; min-width: 80px; border-radius: 8px; overflow: hidden; background: #E2E8F0; display: flex; align-items: center; justify-content: center; border: 1px solid #CBD5E1; position: relative;">
+                <span style="font-size: 0.72rem; color: #94A3B8; text-align: center; padding: 4px;">No Cover</span>
               </div>
-              <div style="font-size: 0.8rem; color: #64748B;">
-                Masukkan URL gambar dari Google Images atau link terbuka lainnya. Cover akan otomatis tersimpan.
+
+              <!-- Controls & Info -->
+              <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <label class="btn-primary" style="font-size: 0.8rem; padding: 6px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; margin: 0;">
+                      <i class="fa-solid fa-cloud-arrow-up"></i> Upload Gambar
+                      <input type="file" id="bookCoverFileInput" accept="image/jpeg,image/png,image/webp" style="display: none;" onchange="handleCoverFileUpload(this.files[0])">
+                    </label>
+                    <button type="button" class="btn-secondary" style="font-size: 0.78rem; padding: 6px 10px; border-radius: 8px;" onclick="toggleManualCoverUrl()">
+                      <i class="fa-solid fa-link"></i> URL Eksternal
+                    </button>
+                    <button type="button" id="btnRemoveCover" class="btn-secondary" style="font-size: 0.78rem; padding: 6px 10px; border-radius: 8px; color: #EF4444; border-color: #FCA5A5; display: none;" onclick="removeCoverImage()">
+                      <i class="fa-solid fa-trash-can"></i> Hapus
+                    </button>
+                  </div>
+                  <div id="coverUploadStatus" style="font-size: 0.78rem; color: #64748B; margin-top: 8px;">
+                    Format JPG, PNG, atau WebP (Maks. 5 MB). Atau drag & drop file ke area ini.
+                  </div>
+                </div>
+
+                <!-- Manual URL Toggle Container (hidden by default) -->
+                <div id="manualCoverUrlWrapper" style="display: none; margin-top: 8px;">
+                  <input type="url" id="manualCoverUrlInput" class="form-control" style="font-size: 0.8rem; padding: 6px 10px;" placeholder="https://images.unsplash.com/..." oninput="applyManualCoverUrl(this.value)">
+                </div>
               </div>
             </div>
           </div>

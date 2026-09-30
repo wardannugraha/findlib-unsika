@@ -1317,12 +1317,135 @@ document.addEventListener('click', (e) => {
 
 function previewCoverImage(url) {
   const box = document.getElementById('coverPreviewBox');
+  const btnRemove = document.getElementById('btnRemoveCover');
   if (url && url.trim().length > 0) {
-    box.innerHTML = `<img src="${url.trim()}" alt="Preview" onerror="this.parentElement.innerHTML='<span style=\\'font-size:0.75rem; color:#EF4444;\\'>Gambar Rusak</span>'">`;
+    box.innerHTML = `<img src="${url.trim()}" alt="Preview" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML='<span style=\\'font-size:0.72rem; color:#EF4444; padding:4px; text-align:center;\\'>Gambar Rusak</span>'">`;
+    if (btnRemove) btnRemove.style.display = 'inline-flex';
   } else {
-    box.innerHTML = `<span style="font-size: 0.75rem; color: #94A3B8; text-align: center;">No Preview</span>`;
+    box.innerHTML = `<span style="font-size: 0.72rem; color: #94A3B8; text-align: center; padding: 4px;">No Cover</span>`;
+    if (btnRemove) btnRemove.style.display = 'none';
   }
 }
+
+async function handleCoverFileUpload(file) {
+  if (!file) return;
+
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  if (!validTypes.includes(file.type)) {
+    notifyToast('error', 'Format file tidak didukung! Harap unggah JPG, PNG, atau WebP.');
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    notifyToast('error', 'Ukuran gambar melebihi 5 MB. Harap perkecil ukuran file.');
+    return;
+  }
+
+  const statusEl = document.getElementById('coverUploadStatus');
+  const bookId = document.getElementById('bookId').value.trim() || 'book';
+
+  statusEl.innerHTML = `<span style="color: #0284C7;"><i class="fa-solid fa-spinner fa-spin"></i> Mengunggah ke Cloudinary...</span>`;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', 'covers');
+    formData.append('prefix', `cover_${bookId}`);
+
+    const res = await fetch('/api/upload/image', {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Gagal upload file');
+    }
+
+    // Set values
+    document.getElementById('bookCoverUrl').value = data.url;
+    document.getElementById('bookCoverPublicId').value = data.public_id;
+    const manualInput = document.getElementById('manualCoverUrlInput');
+    if (manualInput) manualInput.value = data.url;
+
+    previewCoverImage(data.url);
+    statusEl.innerHTML = `<span style="color: #10B981;"><i class="fa-solid fa-circle-check"></i> Cover berhasil diunggah (${data.format.toUpperCase()}, ${(data.bytes / 1024).toFixed(0)} KB)</span>`;
+    notifyToast('success', 'Gambar sampul berhasil diunggah ke Cloudinary!');
+  } catch (err) {
+    console.error('Upload cover error:', err);
+    statusEl.innerHTML = `<span style="color: #EF4444;"><i class="fa-solid fa-circle-xmark"></i> ${err.message || 'Gagal upload'}</span>`;
+    notifyToast('error', `Gagal upload gambar: ${err.message}`);
+  }
+}
+
+function toggleManualCoverUrl() {
+  const wrapper = document.getElementById('manualCoverUrlWrapper');
+  if (wrapper) {
+    const isHidden = wrapper.style.display === 'none';
+    wrapper.style.display = isHidden ? 'block' : 'none';
+    if (isHidden) {
+      const input = document.getElementById('manualCoverUrlInput');
+      if (input) input.focus();
+    }
+  }
+}
+
+function applyManualCoverUrl(url) {
+  document.getElementById('bookCoverUrl').value = url.trim();
+  // Jika input manual URL luar, kosongkan public_id agar tidak memicu delete Cloudinary yang salah
+  document.getElementById('bookCoverPublicId').value = '';
+  previewCoverImage(url);
+  const statusEl = document.getElementById('coverUploadStatus');
+  if (statusEl) {
+    statusEl.innerHTML = url.trim().length > 0 
+      ? `<span style="color: #0284C7;"><i class="fa-solid fa-link"></i> Menggunakan URL eksternal</span>`
+      : `Format JPG, PNG, atau WebP (Maks. 5 MB). Atau drag & drop file ke area ini.`;
+  }
+}
+
+function removeCoverImage() {
+  document.getElementById('bookCoverUrl').value = '';
+  document.getElementById('bookCoverPublicId').value = '';
+  const fileInput = document.getElementById('bookCoverFileInput');
+  if (fileInput) fileInput.value = '';
+  const manualInput = document.getElementById('manualCoverUrlInput');
+  if (manualInput) manualInput.value = '';
+  const statusEl = document.getElementById('coverUploadStatus');
+  if (statusEl) statusEl.innerHTML = `Format JPG, PNG, atau WebP (Maks. 5 MB). Atau drag & drop file ke area ini.`;
+  previewCoverImage('');
+}
+
+// Setup Drag & Drop untuk Cover Dropzone saat DOM siap
+document.addEventListener('DOMContentLoaded', () => {
+  const dropZone = document.getElementById('coverDropZone');
+  if (dropZone) {
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.style.borderColor = '#0284C7';
+        dropZone.style.background = '#F0F9FF';
+      }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.style.borderColor = '#CBD5E1';
+        dropZone.style.background = '#F8FAFC';
+      }, false);
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      if (files && files.length > 0) {
+        handleCoverFileUpload(files[0]);
+      }
+    }, false);
+  }
+});
 
 function openAddBookModal() {
   document.getElementById('formMode').value = 'ADD';
@@ -1334,7 +1457,20 @@ function openAddBookModal() {
   const searchInput = document.getElementById('prodiSearchInput');
   if (searchInput) searchInput.value = '';
   onAdminCategoryChange();
+
+  // Reset Cover Upload State
+  document.getElementById('bookCoverUrl').value = '';
+  document.getElementById('bookCoverPublicId').value = '';
+  const fileInput = document.getElementById('bookCoverFileInput');
+  if (fileInput) fileInput.value = '';
+  const manualInput = document.getElementById('manualCoverUrlInput');
+  if (manualInput) manualInput.value = '';
+  const manualWrapper = document.getElementById('manualCoverUrlWrapper');
+  if (manualWrapper) manualWrapper.style.display = 'none';
+  const statusEl = document.getElementById('coverUploadStatus');
+  if (statusEl) statusEl.innerHTML = `Format JPG, PNG, atau WebP (Maks. 5 MB). Atau drag & drop file ke area ini.`;
   previewCoverImage('');
+
   document.getElementById('bookFormModal').classList.add('open');
 }
 
@@ -1358,8 +1494,25 @@ function openEditBookModal(bookId) {
   document.getElementById('bookLedSlot').value = book.led_slot;
   document.getElementById('bookStock').value = book.total_stock || 1;
   document.getElementById('bookCoverUrl').value = book.cover_url || '';
+  document.getElementById('bookCoverPublicId').value = book.cover_public_id || '';
   document.getElementById('bookSynopsis').value = book.synopsis || '';
   document.getElementById('bookIsDemo').checked = (book.is_demo === true);
+
+  const manualInput = document.getElementById('manualCoverUrlInput');
+  if (manualInput) manualInput.value = book.cover_url || '';
+  const manualWrapper = document.getElementById('manualCoverUrlWrapper');
+  if (manualWrapper) manualWrapper.style.display = 'none';
+
+  const statusEl = document.getElementById('coverUploadStatus');
+  if (statusEl) {
+    if (book.cover_public_id) {
+      statusEl.innerHTML = `<span style="color: #10B981;"><i class="fa-solid fa-cloud"></i> Tersimpan di Cloudinary CDN</span>`;
+    } else if (book.cover_url) {
+      statusEl.innerHTML = `<span style="color: #64748B;"><i class="fa-solid fa-link"></i> URL Eksternal</span>`;
+    } else {
+      statusEl.innerHTML = `Format JPG, PNG, atau WebP (Maks. 5 MB). Atau drag & drop file ke area ini.`;
+    }
+  }
 
   // Set Program Studi & visibility
   onAdminCategoryChange();
@@ -1398,6 +1551,7 @@ async function handleSaveBook(e) {
     is_demo: document.getElementById('bookIsDemo').checked,
     total_stock: parseInt(document.getElementById('bookStock').value, 10) || 1,
     cover_url: document.getElementById('bookCoverUrl').value.trim(),
+    cover_public_id: document.getElementById('bookCoverPublicId').value.trim(),
     synopsis: document.getElementById('bookSynopsis').value.trim()
   };
 

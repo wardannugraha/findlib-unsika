@@ -11,6 +11,7 @@ const fs = require('fs');
 const mqtt = require('mqtt');
 const { Pool } = require('pg');
 require('dotenv').config();
+const { uploadMiddleware, uploadToCloudinary, deleteFromCloudinary } = require('./cloudinary-helper');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -144,10 +145,11 @@ async function initPostgresDatabase() {
     console.log('✅ [DATABASE] Sukses terhubung ke Neon PostgreSQL Cloud!');
     isPgConnected = true;
 
-    // 1. Pastikan kolom is_demo dan prodi sudah ada di database Neon
+    // 1. Pastikan kolom is_demo, prodi, dan cover_public_id sudah ada di database Neon
     try {
       await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS is_demo BOOLEAN DEFAULT FALSE;`);
       await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS prodi VARCHAR(100);`);
+      await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS cover_public_id TEXT;`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_books_is_demo ON books(is_demo);`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_books_prodi ON books(prodi);`);
       await client.query(`
@@ -155,8 +157,24 @@ async function initPostgresDatabase() {
         VALUES ('demo_mode_enabled', 'false', 'Status aktifasi Mode Demo IoT untuk rak miniatur peraga')
         ON CONFLICT (key) DO NOTHING;
       `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS organization_members (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(150) NOT NULL,
+          role_title VARCHAR(100) NOT NULL,
+          division VARCHAR(100) DEFAULT 'Pengurus',
+          photo_url TEXT,
+          photo_public_id TEXT,
+          bio TEXT,
+          display_order INT DEFAULT 0,
+          social_links JSONB DEFAULT '{}',
+          is_active BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
     } catch (migPreErr) {
-      console.warn('⚠️ [DATABASE] Pre-migration books info:', migPreErr.message);
+      console.warn('⚠️ [DATABASE] Pre-migration books/org info:', migPreErr.message);
     }
 
     // 2. Eksekusi skema database
@@ -715,13 +733,65 @@ app.get('/api/books/:id', async (req, res) => {
   }
 });
 
+// ==============================================================================
+// 3.1 UNIVERSAL MEDIA UPLOAD & CLEANUP (CLOUDINARY)
+// ==============================================================================
+
+// Upload Gambar ke Cloudinary (Mendukung folder covers, team, organization, general, dll)
+app.post('/api/upload/image', uploadMiddleware.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Tidak ada file gambar yang diunggah.' });
+    }
+
+    const folderParam = req.body.folder || req.query.folder || 'covers';
+    const prefixParam = req.body.prefix || req.query.prefix || 'img';
+
+    // Standarisasi & sanitasi folder tujuan
+    const allowedFolders = ['covers', 'team', 'organization', 'general', 'banners'];
+    const subFolder = allowedFolders.includes(folderParam) ? folderParam : 'general';
+    const targetFolder = `findlib-unsika/${subFolder}`;
+
+    const uploadResult = await uploadToCloudinary(req.file.buffer, {
+      folder: targetFolder,
+      prefix: prefixParam
+    });
+
+    return res.json({
+      success: true,
+      url: uploadResult.url,
+      public_id: uploadResult.public_id,
+      format: uploadResult.format,
+      bytes: uploadResult.bytes
+    });
+  } catch (err) {
+    console.error('❌ Upload Controller Error:', err);
+    return res.status(500).json({ error: 'Gagal mengunggah gambar ke Cloudinary', details: err.message });
+  }
+});
+
+// Hapus Gambar dari Cloudinary (Zero Orphan Policy)
+app.post('/api/upload/delete', async (req, res) => {
+  try {
+    const { public_id } = req.body;
+    if (!public_id) {
+      return res.status(400).json({ error: 'public_id wajib disertakan.' });
+    }
+    const isDeleted = await deleteFromCloudinary(public_id);
+    return res.json({ success: isDeleted });
+  } catch (err) {
+    console.error('❌ Delete Image Error:', err);
+    return res.status(500).json({ error: 'Gagal menghapus gambar', details: err.message });
+  }
+});
+
 // Tambah Buku Baru
 app.post('/api/books', async (req, res) => {
   try {
     const {
       id, isbn, title, author, publisher, publish_year,
       page_count, synopsis, category_id, prodi, rack_id, led_slot,
-      is_demo, cover_url, total_stock, available_stock
+      is_demo, cover_url, cover_public_id, total_stock, available_stock
     } = req.body;
 
     if (!id || !title || !author || !category_id || !rack_id || !led_slot) {
@@ -734,6 +804,10 @@ app.post('/api/books', async (req, res) => {
       ? cover_url.trim()
       : 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=500&q=80';
 
+    const cleanPublicId = cover_public_id && cover_public_id.trim().length > 0
+      ? cover_public_id.trim()
+      : null;
+
     const stockTotal = parseInt(total_stock || 1, 10);
     const stockAvailable = available_stock !== undefined ? parseInt(available_stock, 10) : stockTotal;
     const stockBorrowed = stockTotal - stockAvailable;
@@ -745,17 +819,17 @@ app.post('/api/books', async (req, res) => {
       const result = await pgPool.query(`
         INSERT INTO books (
           id, isbn, title, author, publisher, publish_year, page_count,
-          synopsis, category_id, prodi, rack_id, led_slot, is_demo, cover_url,
+          synopsis, category_id, prodi, rack_id, led_slot, is_demo, cover_url, cover_public_id,
           total_stock, available_stock, borrowed_count, status
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         RETURNING *
       `, [
         id, isbn || null, title, author, publisher || null,
         publish_year ? parseInt(publish_year, 10) : null,
         page_count ? parseInt(page_count, 10) : null,
         synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
-        isDemoBool, defaultCover, stockTotal, stockAvailable, stockBorrowed, bookStatus
+        isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus
       ]);
       return res.status(201).json({ success: true, book: result.rows[0] });
     } else {
@@ -779,6 +853,7 @@ app.post('/api/books', async (req, res) => {
         led_slot: parseInt(led_slot, 10),
         is_demo: isDemoBool,
         cover_url: defaultCover,
+        cover_public_id: cleanPublicId,
         total_stock: stockTotal,
         available_stock: stockAvailable,
         borrowed_count: stockBorrowed,
@@ -802,12 +877,16 @@ app.put('/api/books/:id', async (req, res) => {
     const {
       isbn, title, author, publisher, publish_year,
       page_count, synopsis, category_id, prodi, rack_id, led_slot,
-      is_demo, cover_url, total_stock, available_stock
+      is_demo, cover_url, cover_public_id, total_stock, available_stock
     } = req.body;
 
     const defaultCover = cover_url && cover_url.trim().length > 0
       ? cover_url.trim()
       : 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=500&q=80';
+
+    const cleanPublicId = cover_public_id && cover_public_id.trim().length > 0
+      ? cover_public_id.trim()
+      : null;
 
     const stockTotal = parseInt(total_stock || 1, 10);
     const stockAvailable = available_stock !== undefined ? parseInt(available_stock, 10) : stockTotal;
@@ -817,27 +896,37 @@ app.put('/api/books/:id', async (req, res) => {
     const prodiVal = prodi && prodi.trim().length > 0 ? prodi.trim() : null;
 
     if (isPgConnected) {
+      // Ambil public_id lama untuk pembersihan jika cover diganti
+      const oldBookRes = await pgPool.query('SELECT cover_public_id FROM books WHERE id = $1', [bookId]);
+      const oldPublicId = oldBookRes.rows.length > 0 ? oldBookRes.rows[0].cover_public_id : null;
+
       const result = await pgPool.query(`
         UPDATE books SET
           isbn = $1, title = $2, author = $3, publisher = $4,
           publish_year = $5, page_count = $6, synopsis = $7,
           category_id = $8, prodi = $9, rack_id = $10, led_slot = $11,
-          is_demo = $12, cover_url = $13, total_stock = $14, available_stock = $15,
-          borrowed_count = $16, status = $17, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $18
+          is_demo = $12, cover_url = $13, cover_public_id = $14, total_stock = $15, available_stock = $16,
+          borrowed_count = $17, status = $18, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $19
         RETURNING *
       `, [
         isbn || null, title, author, publisher || null,
         publish_year ? parseInt(publish_year, 10) : null,
         page_count ? parseInt(page_count, 10) : null,
         synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
-        isDemoBool, defaultCover, stockTotal, stockAvailable, stockBorrowed, bookStatus,
+        isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus,
         bookId
       ]);
 
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Buku tidak ditemukan' });
       }
+
+      // Bersihkan gambar lama di Cloudinary jika diganti
+      if (oldPublicId && cleanPublicId && oldPublicId !== cleanPublicId) {
+        deleteFromCloudinary(oldPublicId);
+      }
+
       return res.json({ success: true, book: result.rows[0] });
     } else {
       const localDb = readLocalDb();
@@ -845,6 +934,8 @@ app.put('/api/books/:id', async (req, res) => {
       if (index === -1) {
         return res.status(404).json({ error: 'Buku tidak ditemukan' });
       }
+
+      const oldPublicId = localDb.books[index].cover_public_id;
 
       localDb.books[index] = {
         ...localDb.books[index],
@@ -861,11 +952,16 @@ app.put('/api/books/:id', async (req, res) => {
         led_slot: led_slot ? parseInt(led_slot, 10) : localDb.books[index].led_slot,
         is_demo: is_demo !== undefined ? isDemoBool : localDb.books[index].is_demo,
         cover_url: defaultCover,
+        cover_public_id: cleanPublicId,
         total_stock: stockTotal,
         available_stock: stockAvailable,
         borrowed_count: stockBorrowed,
         status: bookStatus
       };
+
+      if (oldPublicId && cleanPublicId && oldPublicId !== cleanPublicId) {
+        deleteFromCloudinary(oldPublicId);
+      }
 
       writeLocalDb(localDb);
       return res.json({ success: true, book: localDb.books[index] });
@@ -876,7 +972,7 @@ app.put('/api/books/:id', async (req, res) => {
   }
 });
 
-// Hapus Buku
+// Hapus Buku (Beserta file cover di Cloudinary)
 app.delete('/api/books/:id', async (req, res) => {
   try {
     const bookId = req.params.id;
@@ -885,19 +981,222 @@ app.delete('/api/books/:id', async (req, res) => {
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Buku tidak ditemukan' });
       }
+      const deletedBook = result.rows[0];
+      if (deletedBook.cover_public_id) {
+        deleteFromCloudinary(deletedBook.cover_public_id);
+      }
       return res.json({ success: true, message: `Buku [${bookId}] berhasil dihapus.` });
     } else {
       const localDb = readLocalDb();
-      const initialLen = localDb.books.length;
-      localDb.books = localDb.books.filter(b => b.id !== bookId);
-      if (localDb.books.length === initialLen) {
+      const index = localDb.books.findIndex(b => b.id === bookId);
+      if (index === -1) {
         return res.status(404).json({ error: 'Buku tidak ditemukan' });
+      }
+      const [deletedBook] = localDb.books.splice(index, 1);
+      if (deletedBook && deletedBook.cover_public_id) {
+        deleteFromCloudinary(deletedBook.cover_public_id);
       }
       writeLocalDb(localDb);
       return res.json({ success: true, message: `Buku [${bookId}] berhasil dihapus.` });
     }
   } catch (err) {
     res.status(500).json({ error: 'Gagal menghapus buku', details: err.message });
+  }
+});
+
+// ==============================================================================
+// 3.2 STRUKTUR ORGANISASI & PROFIL TIM DINAMIS (ABOUT / TEAM)
+// ==============================================================================
+
+// Ambil Daftar Anggota / Struktur Organisasi
+app.get('/api/organization', async (req, res) => {
+  try {
+    if (isPgConnected) {
+      const result = await pgPool.query(`
+        SELECT * FROM organization_members 
+        ORDER BY display_order ASC, id ASC
+      `);
+      return res.json(result.rows);
+    } else {
+      const localDb = readLocalDb();
+      const members = localDb.organization_members || [];
+      members.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+      return res.json(members);
+    }
+  } catch (err) {
+    console.error('Error ambil data organisasi:', err);
+    res.status(500).json({ error: 'Gagal mengambil data struktur organisasi' });
+  }
+});
+
+// Tambah Anggota Organisasi Baru
+app.post('/api/organization', async (req, res) => {
+  try {
+    const {
+      name, role_title, division, photo_url, photo_public_id,
+      bio, display_order, social_links, is_active
+    } = req.body;
+
+    if (!name || !role_title) {
+      return res.status(400).json({ error: 'Nama dan Jabatan wajib diisi.' });
+    }
+
+    const orderNum = parseInt(display_order || 0, 10);
+    const activeBool = is_active !== undefined ? Boolean(is_active) : true;
+    const divisionVal = division || 'Pengurus';
+    const socialVal = social_links || {};
+
+    if (isPgConnected) {
+      const result = await pgPool.query(`
+        INSERT INTO organization_members (
+          name, role_title, division, photo_url, photo_public_id,
+          bio, display_order, social_links, is_active
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *
+      `, [
+        name, role_title, divisionVal, photo_url || null, photo_public_id || null,
+        bio || '', orderNum, JSON.stringify(socialVal), activeBool
+      ]);
+      return res.status(201).json({ success: true, member: result.rows[0] });
+    } else {
+      const localDb = readLocalDb();
+      if (!localDb.organization_members) localDb.organization_members = [];
+
+      const newId = localDb.organization_members.length > 0 
+        ? Math.max(...localDb.organization_members.map(m => m.id || 0)) + 1 
+        : 1;
+
+      const newMember = {
+        id: newId,
+        name,
+        role_title,
+        division: divisionVal,
+        photo_url: photo_url || null,
+        photo_public_id: photo_public_id || null,
+        bio: bio || '',
+        display_order: orderNum,
+        social_links: socialVal,
+        is_active: activeBool,
+        created_at: new Date().toISOString()
+      };
+
+      localDb.organization_members.push(newMember);
+      writeLocalDb(localDb);
+      return res.status(201).json({ success: true, member: newMember });
+    }
+  } catch (err) {
+    console.error('Error tambah anggota organisasi:', err);
+    res.status(500).json({ error: 'Gagal menambah anggota organisasi', details: err.message });
+  }
+});
+
+// Update Anggota Organisasi
+app.put('/api/organization/:id', async (req, res) => {
+  try {
+    const memberId = parseInt(req.params.id, 10);
+    const {
+      name, role_title, division, photo_url, photo_public_id,
+      bio, display_order, social_links, is_active
+    } = req.body;
+
+    const orderNum = parseInt(display_order || 0, 10);
+    const activeBool = is_active !== undefined ? Boolean(is_active) : true;
+    const divisionVal = division || 'Pengurus';
+    const socialVal = social_links || {};
+
+    if (isPgConnected) {
+      const oldRes = await pgPool.query('SELECT photo_public_id FROM organization_members WHERE id = $1', [memberId]);
+      const oldPublicId = oldRes.rows.length > 0 ? oldRes.rows[0].photo_public_id : null;
+
+      const result = await pgPool.query(`
+        UPDATE organization_members SET
+          name = $1, role_title = $2, division = $3, photo_url = $4, photo_public_id = $5,
+          bio = $6, display_order = $7, social_links = $8, is_active = $9, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $10
+        RETURNING *
+      `, [
+        name, role_title, divisionVal, photo_url || null, photo_public_id || null,
+        bio || '', orderNum, JSON.stringify(socialVal), activeBool,
+        memberId
+      ]);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
+      }
+
+      if (oldPublicId && photo_public_id && oldPublicId !== photo_public_id) {
+        deleteFromCloudinary(oldPublicId);
+      }
+
+      return res.json({ success: true, member: result.rows[0] });
+    } else {
+      const localDb = readLocalDb();
+      if (!localDb.organization_members) localDb.organization_members = [];
+      const idx = localDb.organization_members.findIndex(m => m.id === memberId);
+      if (idx === -1) {
+        return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
+      }
+
+      const oldPublicId = localDb.organization_members[idx].photo_public_id;
+      localDb.organization_members[idx] = {
+        ...localDb.organization_members[idx],
+        name: name || localDb.organization_members[idx].name,
+        role_title: role_title || localDb.organization_members[idx].role_title,
+        division: divisionVal,
+        photo_url: photo_url !== undefined ? photo_url : localDb.organization_members[idx].photo_url,
+        photo_public_id: photo_public_id !== undefined ? photo_public_id : localDb.organization_members[idx].photo_public_id,
+        bio: bio !== undefined ? bio : localDb.organization_members[idx].bio,
+        display_order: orderNum,
+        social_links: socialVal,
+        is_active: activeBool,
+        updated_at: new Date().toISOString()
+      };
+
+      if (oldPublicId && photo_public_id && oldPublicId !== photo_public_id) {
+        deleteFromCloudinary(oldPublicId);
+      }
+
+      writeLocalDb(localDb);
+      return res.json({ success: true, member: localDb.organization_members[idx] });
+    }
+  } catch (err) {
+    console.error('Error update anggota organisasi:', err);
+    res.status(500).json({ error: 'Gagal mengupdate data organisasi', details: err.message });
+  }
+});
+
+// Hapus Anggota Organisasi
+app.delete('/api/organization/:id', async (req, res) => {
+  try {
+    const memberId = parseInt(req.params.id, 10);
+    if (isPgConnected) {
+      const result = await pgPool.query('DELETE FROM organization_members WHERE id = $1 RETURNING *', [memberId]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
+      }
+      const deletedMember = result.rows[0];
+      if (deletedMember.photo_public_id) {
+        deleteFromCloudinary(deletedMember.photo_public_id);
+      }
+      return res.json({ success: true, message: 'Anggota organisasi berhasil dihapus' });
+    } else {
+      const localDb = readLocalDb();
+      if (!localDb.organization_members) localDb.organization_members = [];
+      const idx = localDb.organization_members.findIndex(m => m.id === memberId);
+      if (idx === -1) {
+        return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
+      }
+      const [deletedMember] = localDb.organization_members.splice(idx, 1);
+      if (deletedMember && deletedMember.photo_public_id) {
+        deleteFromCloudinary(deletedMember.photo_public_id);
+      }
+      writeLocalDb(localDb);
+      return res.json({ success: true, message: 'Anggota organisasi berhasil dihapus' });
+    }
+  } catch (err) {
+    console.error('Error hapus anggota organisasi:', err);
+    res.status(500).json({ error: 'Gagal menghapus anggota organisasi', details: err.message });
   }
 });
 
