@@ -2,6 +2,7 @@
 // 📚 FINDLIB UNSIKA - SERVER UTAMA (Node.js & Express)
 // ==============================================================================
 // FindLib UNSIKA (Find your Library) - Sistem Navigasi & Rak Pintar IoT
+// Single Source of Truth: Neon PostgreSQL Cloud & Cloudinary Media Storage
 // ==============================================================================
 
 const express = require('express');
@@ -21,42 +22,36 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Path file database lokal (sebagai fallback jika offline)
-const LOCAL_DB_PATH = path.join(__dirname, 'database', 'local_db.json');
-
 // Kredensial Admin dari .env
 const ADMIN_USER = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'adminunsika';
 
 // ==============================================================================
-// 1. KONEKSI & INISIALISASI DATABASE (Neon PostgreSQL Cloud)
+// 1. KONEKSI & INISIALISASI DATABASE (Neon PostgreSQL Cloud - SINGLE SOURCE OF TRUTH)
 // ==============================================================================
-let pgPool = null;
+if (!process.env.DATABASE_URL) {
+  console.error('❌ [FATAL] DATABASE_URL tidak ditemukan di file .env!');
+  console.error('Harap masukkan koneksi Neon PostgreSQL Cloud di file .env.');
+}
+
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
 let isPgConnected = false;
 
-function readLocalDb() {
-  try {
-    const raw = fs.readFileSync(LOCAL_DB_PATH, 'utf-8');
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('❌ Gagal membaca local_db.json:', err);
-    return { categories: [], racks: [], books: [] };
-  }
-}
+pgPool.on('error', (err) => {
+  console.error('❌ [DATABASE POOL ERROR]:', err.message);
+});
 
-function writeLocalDb(data) {
-  try {
-    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
-    return true;
-  } catch (err) {
-    console.error('❌ Gagal menulis local_db.json:', err);
-    return false;
-  }
+// Helper Query PostgreSQL
+async function dbQuery(text, params = []) {
+  return await pgPool.query(text, params);
 }
-const saveLocalDb = writeLocalDb;
 
 // ==============================================================================
-// 1.1 APP SETTINGS HELPER (POSTGRESQL & LOCAL DB)
+// 1.1 APP SETTINGS HELPER (POSTGRESQL SINGLE SOURCE OF TRUTH)
 // ==============================================================================
 const DEFAULT_SETTINGS = {
   default_loan_days: "7",
@@ -73,79 +68,54 @@ const DEFAULT_SETTINGS = {
   library_hours: 'Senin - Jumat: 08.00 - 16.00 WIB'
 };
 
-async function safePgQuery(query, params = []) {
-  if (!isPgConnected || !pgPool) return null;
-  try {
-    const res = await pgPool.query(query, params);
-    return res;
-  } catch (err) {
-    const errMsg = err.message || (err.errors && err.errors[0] ? err.errors[0].message : String(err));
-    console.warn(`⚠️ [DATABASE CLOUD NOTICE] Query dialihkan ke mode lokal:`, errMsg);
-    return null;
-  }
-}
-
 async function getAppSettings() {
-  const res = await safePgQuery('SELECT key, value FROM app_settings');
-  if (res && res.rows) {
+  try {
+    const res = await dbQuery('SELECT key, value FROM app_settings');
     const settings = { ...DEFAULT_SETTINGS };
-    res.rows.forEach(r => {
-      settings[r.key] = r.value;
-    });
+    if (res && res.rows) {
+      res.rows.forEach(r => {
+        settings[r.key] = r.value;
+      });
+    }
     return settings;
+  } catch (err) {
+    console.error('❌ [SETTINGS ERROR] Gagal membaca app_settings dari PostgreSQL:', err.message);
+    return { ...DEFAULT_SETTINGS };
   }
-  const localDb = readLocalDb();
-  return { ...DEFAULT_SETTINGS, ...(localDb.settings || {}) };
 }
 
 async function saveAppSettings(newSettings) {
-  if (isPgConnected && pgPool) {
-    try {
-      const client = await pgPool.connect();
-      try {
-        await client.query('BEGIN');
-        for (const [key, value] of Object.entries(newSettings)) {
-          await client.query(`
-            INSERT INTO app_settings (key, value, updated_at)
-            VALUES ($1, $2, CURRENT_TIMESTAMP)
-            ON CONFLICT (key) DO UPDATE
-            SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
-          `, [key, String(value)]);
-        }
-        await client.query('COMMIT');
-        return true;
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-      } finally {
-        client.release();
-      }
-    } catch (err) {
-      console.warn('⚠️ Gagal simpan app_settings ke PG, menyimpan ke lokal JSON:', err.message);
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const [key, value] of Object.entries(newSettings)) {
+      await client.query(`
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ($1, $2, CURRENT_TIMESTAMP)
+        ON CONFLICT (key) DO UPDATE
+        SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+      `, [key, String(value)]);
     }
+    await client.query('COMMIT');
+    return true;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('❌ [SETTINGS ERROR] Gagal menyimpan app_settings ke PostgreSQL:', err.message);
+    throw err;
+  } finally {
+    client.release();
   }
-
-  const localDb = readLocalDb();
-  localDb.settings = { ...(localDb.settings || DEFAULT_SETTINGS), ...newSettings };
-  return writeLocalDb(localDb);
 }
 
 async function initPostgresDatabase() {
   if (!process.env.DATABASE_URL) return;
 
   try {
-    pgPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
-    });
-
-    pgPool.on('error', () => { });
-
     const client = await pgPool.connect();
-    console.log('✅ [DATABASE] Sukses terhubung ke Neon PostgreSQL Cloud!');
+    console.log('✅ [DATABASE] Sukses terhubung ke Neon PostgreSQL Cloud (Single Source of Truth)!');
     isPgConnected = true;
 
-    // 1. Pastikan kolom is_demo, prodi, dan cover_public_id sudah ada di database Neon
+    // 1. Pastikan kolom dan tabel pendukung sudah ada di database Neon
     try {
       await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS is_demo BOOLEAN DEFAULT FALSE;`);
       await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS prodi VARCHAR(100);`);
@@ -182,9 +152,10 @@ async function initPostgresDatabase() {
     if (fs.existsSync(schemaSqlPath)) {
       const schemaSql = fs.readFileSync(schemaSqlPath, 'utf-8');
       await client.query(schemaSql);
-      console.log('✅ [DATABASE] Struktur tabel terverifikasi (categories, racks, books, study_programs).');
+      console.log('✅ [DATABASE] Struktur tabel terverifikasi (categories, racks, books, study_programs, members, loans, app_settings, organization_members).');
     }
 
+    // 3. Cek apakah database kosong untuk inisialisasi seed awal
     const checkBooks = await client.query('SELECT COUNT(*) FROM books');
     if (parseInt(checkBooks.rows[0].count, 10) === 0) {
       console.log('ℹ️ [DATABASE] Database masih kosong. Menjalankan seed data sampel awal...');
@@ -198,7 +169,7 @@ async function initPostgresDatabase() {
 
     client.release();
   } catch (error) {
-    console.warn('⚠️ [DATABASE] Gagal konek ke Neon PostgreSQL. Menggunakan mode database lokal (JSON). Error:', error.message || error);
+    console.error('❌ [DATABASE] Gagal konek ke Neon PostgreSQL:', error.message || error);
     isPgConnected = false;
   }
 }
@@ -321,24 +292,16 @@ app.get('/api/auth/verify', (req, res) => {
 });
 
 // ==============================================================================
-// 4. REST API ENDPOINTS
+// 4. REST API ENDPOINTS (POSTGRESQL SINGLE SOURCE OF TRUTH)
 // ==============================================================================
 
-// Info Status Sistem & Statistik Murni dari Database
+// Info Status Sistem & Statistik
 app.get('/api/system-status', async (req, res) => {
-  let totalTitles = 0;
-  let totalCategories = 0;
-  let totalStock = 0;
-  let availableStock = 0;
-  let borrowedCount = 0;
-  let demoBooksCount = 0;
-  let isDemoModeActive = false;
-
   try {
     const settings = await getAppSettings();
-    isDemoModeActive = settings.demo_mode_enabled === 'true';
+    const isDemoModeActive = settings.demo_mode_enabled === 'true';
 
-    const bRes = await safePgQuery(`
+    const bRes = await dbQuery(`
       SELECT 
         COUNT(*) as titles, 
         COALESCE(SUM(total_stock), 0) as total_stock, 
@@ -347,70 +310,58 @@ app.get('/api/system-status', async (req, res) => {
         COUNT(CASE WHEN is_demo = TRUE THEN 1 END) as demo_books_count
       FROM books
     `);
-    const cRes = bRes ? await safePgQuery('SELECT COUNT(*) FROM categories') : null;
+    const cRes = await dbQuery('SELECT COUNT(*) FROM categories');
 
-    if (bRes && bRes.rows && bRes.rows.length > 0 && cRes && cRes.rows) {
-      totalTitles = parseInt(bRes.rows[0].titles, 10) || 0;
-      totalStock = parseInt(bRes.rows[0].total_stock, 10) || 0;
-      availableStock = parseInt(bRes.rows[0].available_stock, 10) || 0;
-      borrowedCount = parseInt(bRes.rows[0].borrowed_count, 10) || 0;
-      demoBooksCount = parseInt(bRes.rows[0].demo_books_count, 10) || 0;
-      totalCategories = parseInt(cRes.rows[0].count, 10) || 0;
-    } else {
-      const localDb = readLocalDb();
-      totalTitles = localDb.books.length;
-      totalCategories = localDb.categories.length;
-      totalStock = localDb.books.reduce((acc, b) => acc + (parseInt(b.total_stock, 10) || 0), 0);
-      availableStock = localDb.books.reduce((acc, b) => acc + (parseInt(b.available_stock, 10) || 0), 0);
-      borrowedCount = localDb.books.reduce((acc, b) => acc + (parseInt(b.borrowed_count, 10) || 0), 0);
-      demoBooksCount = localDb.books.filter(b => b.is_demo === true).length;
-    }
-  } catch (e) {
-    console.error('Error stats query:', e.message);
+    const totalTitles = parseInt(bRes.rows[0].titles, 10) || 0;
+    const totalStock = parseInt(bRes.rows[0].total_stock, 10) || 0;
+    const availableStock = parseInt(bRes.rows[0].available_stock, 10) || 0;
+    const borrowedCount = parseInt(bRes.rows[0].borrowed_count, 10) || 0;
+    const demoBooksCount = parseInt(bRes.rows[0].demo_books_count, 10) || 0;
+    const totalCategories = parseInt(cRes.rows[0].count, 10) || 0;
+
+    res.json({
+      appName: 'FindLib UNSIKA (Find your Library)',
+      version: '1.0.0',
+      stats: {
+        totalTitles,
+        totalCategories,
+        totalStock,
+        availableStock,
+        borrowedCount,
+        demoBooksCount,
+        generalBooksCount: Math.max(0, totalTitles - demoBooksCount)
+      },
+      demoMode: {
+        enabled: isDemoModeActive,
+        demoBooksCount: demoBooksCount,
+        totalBooksCount: totalTitles
+      },
+      database: {
+        mode: 'Neon PostgreSQL Cloud (Single Source of Truth)',
+        connected: isPgConnected
+      },
+      mqtt: {
+        broker: MQTT_BROKER_URL,
+        topic: MQTT_TOPIC,
+        status: isMqttConnected ? 'CONNECTED' : 'DISCONNECTED / LOCAL SIMULATION'
+      },
+      config: {
+        animationDuration: parseInt(settings.led_duration_seconds || process.env.LED_ANIMATION_DURATION || '15', 10)
+      }
+    });
+  } catch (err) {
+    console.error('Error stats query:', err.message);
+    res.status(500).json({ error: 'Gagal mengambil status sistem dari database', details: err.message });
   }
-
-  res.json({
-    appName: 'FindLib UNSIKA (Find your Library)',
-    version: '1.0.0',
-    stats: {
-      totalTitles,
-      totalCategories,
-      totalStock,
-      availableStock,
-      borrowedCount,
-      demoBooksCount,
-      generalBooksCount: Math.max(0, totalTitles - demoBooksCount)
-    },
-    demoMode: {
-      enabled: isDemoModeActive,
-      demoBooksCount: demoBooksCount,
-      totalBooksCount: totalTitles
-    },
-    database: {
-      mode: isPgConnected ? 'Neon PostgreSQL Cloud' : 'Local JSON Database',
-      connected: isPgConnected
-    },
-    mqtt: {
-      broker: MQTT_BROKER_URL,
-      topic: MQTT_TOPIC,
-      status: isMqttConnected ? 'CONNECTED' : 'DISCONNECTED / LOCAL SIMULATION'
-    },
-    config: {
-      animationDuration: parseInt(process.env.LED_ANIMATION_DURATION || '15', 10)
-    }
-  });
 });
 
 // Ambil Kategori
 app.get('/api/categories', async (req, res) => {
   try {
-    const result = await safePgQuery('SELECT * FROM categories ORDER BY name ASC');
-    if (result && result.rows) {
-      return res.json(result.rows);
-    }
-    const localDb = readLocalDb();
-    return res.json(localDb.categories);
+    const result = await dbQuery('SELECT * FROM categories ORDER BY name ASC');
+    return res.json(result.rows);
   } catch (err) {
+    console.error('Error get categories:', err.message);
     res.status(500).json({ error: 'Gagal mengambil kategori', details: err.message });
   }
 });
@@ -423,51 +374,32 @@ app.post('/api/categories', async (req, res) => {
       return res.status(400).json({ error: 'ID, Nama Kategori, dan Kode Warna HEX wajib diisi!' });
     }
 
-    if (isPgConnected && pgPool) {
-      const result = await safePgQuery(`
-        INSERT INTO categories (id, name, color_hex, description)
-        VALUES ($1, $2, $3, $4)
-        RETURNING *
-      `, [id, name, color_hex, description || '']);
-      if (result && result.rows && result.rows.length > 0) {
-        return res.status(201).json({ success: true, category: result.rows[0] });
-      }
-    }
+    const result = await dbQuery(`
+      INSERT INTO categories (id, name, color_hex, description)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (id) DO UPDATE 
+      SET name = EXCLUDED.name, color_hex = EXCLUDED.color_hex, description = EXCLUDED.description
+      RETURNING *
+    `, [id, name, color_hex, description || '']);
 
-    const localDb = readLocalDb();
-    const newCat = { id, name, color_hex, description: description || '' };
-    localDb.categories.push(newCat);
-    writeLocalDb(localDb);
-    return res.status(201).json({ success: true, category: newCat });
+    return res.status(201).json({ success: true, category: result.rows[0] });
   } catch (err) {
+    console.error('Error create category:', err.message);
     res.status(500).json({ error: 'Gagal menambah kategori', details: err.message });
   }
 });
 
 // ==============================================================================
-// 2.1 PROGRAM STUDI (MASTER & AKTIF)
+// 4.1 PROGRAM STUDI (MASTER & AKTIF)
 // ==============================================================================
-// Ambil Daftar Program Studi (Master + Aktif yang ada di buku)
-// Ambil Daftar Program Studi (Hanya dari yang tercatat pada koleksi buku)
+// Ambil Daftar Program Studi (Hanya dari yang tercatat pada koleksi buku & master)
 app.get('/api/prodi', async (req, res) => {
   try {
-    const activeRes = await safePgQuery("SELECT DISTINCT prodi FROM books WHERE prodi IS NOT NULL AND TRIM(prodi) != '' ORDER BY prodi ASC");
-
-    if (activeRes && activeRes.rows) {
-      const prodiList = activeRes.rows.map(r => r.prodi).filter(Boolean);
-      return res.json(prodiList);
-    }
-
-    const localDb = readLocalDb();
-    const activeSet = new Set();
-    (localDb.books || []).forEach(b => {
-      if (b.prodi && typeof b.prodi === 'string' && b.prodi.trim()) {
-        activeSet.add(b.prodi.trim());
-      }
-    });
-    const prodiList = Array.from(activeSet).sort((a, b) => a.localeCompare(b));
+    const activeRes = await dbQuery("SELECT DISTINCT prodi FROM books WHERE prodi IS NOT NULL AND TRIM(prodi) != '' ORDER BY prodi ASC");
+    const prodiList = activeRes.rows.map(r => r.prodi).filter(Boolean);
     return res.json(prodiList);
   } catch (err) {
+    console.error('Error get prodi:', err.message);
     res.status(500).json({ error: 'Gagal mengambil daftar prodi', details: err.message });
   }
 });
@@ -481,24 +413,15 @@ app.post('/api/prodi', async (req, res) => {
     }
     const cleanName = name.trim();
 
-    if (isPgConnected && pgPool) {
-      await safePgQuery(`
-        INSERT INTO study_programs (name)
-        VALUES ($1)
-        ON CONFLICT (name) DO NOTHING
-      `, [cleanName]);
-    }
+    await dbQuery(`
+      INSERT INTO study_programs (name)
+      VALUES ($1)
+      ON CONFLICT (name) DO NOTHING
+    `, [cleanName]);
 
-    const localDb = readLocalDb();
-    if (!localDb.study_programs) localDb.study_programs = [];
-    const exists = localDb.study_programs.some(p => p.toLowerCase() === cleanName.toLowerCase());
-    if (!exists) {
-      localDb.study_programs.push(cleanName);
-      localDb.study_programs.sort((a, b) => a.localeCompare(b));
-      writeLocalDb(localDb);
-    }
     return res.status(201).json({ success: true, name: cleanName });
   } catch (err) {
+    console.error('Error create prodi:', err.message);
     res.status(500).json({ error: 'Gagal menambah program studi', details: err.message });
   }
 });
@@ -506,28 +429,15 @@ app.post('/api/prodi', async (req, res) => {
 // Ambil Rak
 app.get('/api/racks', async (req, res) => {
   try {
-    const result = await safePgQuery(`
+    const result = await dbQuery(`
       SELECT r.*, c.name as category_name, c.color_hex
       FROM racks r
       LEFT JOIN categories c ON r.category_id = c.id
       ORDER BY r.level_number ASC
     `);
-
-    if (result && result.rows) {
-      return res.json(result.rows);
-    }
-
-    const localDb = readLocalDb();
-    const racks = localDb.racks.map(rack => {
-      const cat = localDb.categories.find(c => c.id === rack.category_id);
-      return {
-        ...rack,
-        category_name: cat ? cat.name : 'Umum',
-        color_hex: cat ? cat.color_hex : '#22C55E'
-      };
-    });
-    return res.json(racks);
+    return res.json(result.rows);
   } catch (err) {
+    console.error('Error get racks:', err.message);
     res.status(500).json({ error: 'Gagal mengambil rak', details: err.message });
   }
 });
@@ -564,127 +474,70 @@ app.get('/api/books', async (req, res) => {
     const yFrom = year_from ? parseInt(year_from, 10) : (year && year !== 'ALL' ? parseInt(year, 10) : null);
     const yTo = year_to ? parseInt(year_to, 10) : (year && year !== 'ALL' ? parseInt(year, 10) : null);
 
-    if (isPgConnected) {
-      let query = `
-        SELECT b.*, c.name as category_name, c.color_hex, 
-               r.rack_name, r.level_number, r.led_start_index, r.led_end_index
-        FROM books b
-        LEFT JOIN categories c ON b.category_id = c.id
-        LEFT JOIN racks r ON b.rack_id = r.id
-        WHERE 1=1
-      `;
-      const params = [];
-
-      if (q) {
-        params.push(`%${q.toLowerCase()}%`);
-        query += ` AND (LOWER(b.title) LIKE $${params.length} OR LOWER(b.author) LIKE $${params.length} OR LOWER(b.id) LIKE $${params.length} OR LOWER(COALESCE(b.isbn, '')) LIKE $${params.length} OR LOWER(COALESCE(b.prodi, '')) LIKE $${params.length})`;
-      }
-
-      const nonSkripsiCats = catList.filter(c => !c.toLowerCase().includes('skripsi'));
-
-      if (prodiList.length > 0) {
-        const prodiPlaceholders = prodiList.map(p => {
-          params.push(p);
-          return `$${params.length}`;
-        }).join(', ');
-
-        if (nonSkripsiCats.length > 0) {
-          const catPlaceholders = nonSkripsiCats.map(c => {
-            params.push(c);
-            return `$${params.length}`;
-          }).join(', ');
-
-          // Buku umum yang dipilih ATAU Skripsi dari prodi yang dipilih
-          query += ` AND (b.category_id IN (${catPlaceholders}) OR b.prodi IN (${prodiPlaceholders}))`;
-        } else {
-          // Hanya skripsi dari prodi yang dipilih
-          query += ` AND b.prodi IN (${prodiPlaceholders})`;
-        }
-      } else if (catList.length > 0) {
-        const placeholders = catList.map(c => {
-          params.push(c);
-          return `$${params.length}`;
-        }).join(', ');
-        query += ` AND b.category_id IN (${placeholders})`;
-      }
-
-      if (yFrom) {
-        params.push(yFrom);
-        query += ` AND b.publish_year >= $${params.length}`;
-      }
-
-      if (yTo) {
-        params.push(yTo);
-        query += ` AND b.publish_year <= $${params.length}`;
-      }
-
-      if (effectiveDemoFilter === 'demo') {
-        query += ` AND b.is_demo = TRUE`;
-      } else if (effectiveDemoFilter === 'general') {
-        query += ` AND (b.is_demo = FALSE OR b.is_demo IS NULL)`;
-      }
-
-      query += ' ORDER BY b.title ASC';
-      const result = await safePgQuery(query, params);
-      if (result && result.rows) {
-        return res.json(result.rows);
-      }
-    }
-
-    const localDb = readLocalDb();
-    let books = localDb.books.map(b => {
-      const cat = localDb.categories.find(c => c.id === b.category_id);
-      const rack = localDb.racks.find(r => r.id === b.rack_id);
-      return {
-        ...b,
-        is_demo: b.is_demo === true,
-        category_name: cat ? cat.name : 'Umum',
-        color_hex: cat ? cat.color_hex : '#22C55E',
-        rack_name: rack ? rack.rack_name : 'Rak A',
-        level_number: rack ? rack.level_number : 1,
-        led_start_index: rack ? rack.led_start_index : 1,
-        led_end_index: rack ? rack.led_end_index : 4
-      };
-    });
+    let query = `
+      SELECT b.*, c.name as category_name, c.color_hex, 
+             r.rack_name, r.level_number, r.led_start_index, r.led_end_index
+      FROM books b
+      LEFT JOIN categories c ON b.category_id = c.id
+      LEFT JOIN racks r ON b.rack_id = r.id
+      WHERE 1=1
+    `;
+    const params = [];
 
     if (q) {
-      const queryLower = q.toLowerCase();
-      books = books.filter(b =>
-        b.title.toLowerCase().includes(queryLower) ||
-        b.author.toLowerCase().includes(queryLower) ||
-        b.id.toLowerCase().includes(queryLower) ||
-        (b.isbn && b.isbn.toLowerCase().includes(queryLower)) ||
-        (b.prodi && b.prodi.toLowerCase().includes(queryLower))
-      );
+      params.push(`%${q.toLowerCase()}%`);
+      query += ` AND (LOWER(b.title) LIKE $${params.length} OR LOWER(b.author) LIKE $${params.length} OR LOWER(b.id) LIKE $${params.length} OR LOWER(COALESCE(b.isbn, '')) LIKE $${params.length} OR LOWER(COALESCE(b.prodi, '')) LIKE $${params.length})`;
     }
 
     const nonSkripsiCats = catList.filter(c => !c.toLowerCase().includes('skripsi'));
+
     if (prodiList.length > 0) {
+      const prodiPlaceholders = prodiList.map(p => {
+        params.push(p);
+        return `$${params.length}`;
+      }).join(', ');
+
       if (nonSkripsiCats.length > 0) {
-        books = books.filter(b => nonSkripsiCats.includes(b.category_id) || (b.prodi && prodiList.includes(b.prodi)));
+        const catPlaceholders = nonSkripsiCats.map(c => {
+          params.push(c);
+          return `$${params.length}`;
+        }).join(', ');
+
+        // Buku umum yang dipilih ATAU Skripsi dari prodi yang dipilih
+        query += ` AND (b.category_id IN (${catPlaceholders}) OR b.prodi IN (${prodiPlaceholders}))`;
       } else {
-        books = books.filter(b => b.prodi && prodiList.includes(b.prodi));
+        // Hanya skripsi dari prodi yang dipilih
+        query += ` AND b.prodi IN (${prodiPlaceholders})`;
       }
     } else if (catList.length > 0) {
-      books = books.filter(b => catList.includes(b.category_id));
+      const placeholders = catList.map(c => {
+        params.push(c);
+        return `$${params.length}`;
+      }).join(', ');
+      query += ` AND b.category_id IN (${placeholders})`;
     }
 
     if (yFrom) {
-      books = books.filter(b => b.publish_year && b.publish_year >= yFrom);
+      params.push(yFrom);
+      query += ` AND b.publish_year >= $${params.length}`;
     }
 
     if (yTo) {
-      books = books.filter(b => b.publish_year && b.publish_year <= yTo);
+      params.push(yTo);
+      query += ` AND b.publish_year <= $${params.length}`;
     }
 
     if (effectiveDemoFilter === 'demo') {
-      books = books.filter(b => b.is_demo === true);
+      query += ` AND b.is_demo = TRUE`;
     } else if (effectiveDemoFilter === 'general') {
-      books = books.filter(b => b.is_demo !== true);
+      query += ` AND (b.is_demo = FALSE OR b.is_demo IS NULL)`;
     }
 
-    return res.json(books);
+    query += ' ORDER BY b.title ASC';
+    const result = await dbQuery(query, params);
+    return res.json(result.rows);
   } catch (err) {
+    console.error('Error get books:', err.message);
     res.status(500).json({ error: 'Gagal mengambil data buku', details: err.message });
   }
 });
@@ -693,51 +546,30 @@ app.get('/api/books', async (req, res) => {
 app.get('/api/books/:id', async (req, res) => {
   try {
     const bookId = req.params.id;
-    let book = null;
+    const result = await dbQuery(`
+      SELECT b.*, c.name as category_name, c.color_hex, 
+             r.rack_name, r.level_number, r.led_start_index, r.led_end_index
+      FROM books b
+      LEFT JOIN categories c ON b.category_id = c.id
+      LEFT JOIN racks r ON b.rack_id = r.id
+      WHERE b.id = $1
+    `, [bookId]);
 
-    if (isPgConnected) {
-      const result = await pgPool.query(`
-        SELECT b.*, c.name as category_name, c.color_hex, 
-               r.rack_name, r.level_number, r.led_start_index, r.led_end_index
-        FROM books b
-        LEFT JOIN categories c ON b.category_id = c.id
-        LEFT JOIN racks r ON b.rack_id = r.id
-        WHERE b.id = $1
-      `, [bookId]);
-      if (result.rows.length > 0) book = result.rows[0];
-    } else {
-      const localDb = readLocalDb();
-      const found = localDb.books.find(b => b.id === bookId);
-      if (found) {
-        const cat = localDb.categories.find(c => c.id === found.category_id);
-        const rack = localDb.racks.find(r => r.id === found.rack_id);
-        book = {
-          ...found,
-          is_demo: found.is_demo === true,
-          category_name: cat ? cat.name : 'Umum',
-          color_hex: cat ? cat.color_hex : '#22C55E',
-          rack_name: rack ? rack.rack_name : 'Rak A',
-          level_number: rack ? rack.level_number : 1,
-          led_start_index: rack ? rack.led_start_index : 1,
-          led_end_index: rack ? rack.led_end_index : 4
-        };
-      }
-    }
-
-    if (!book) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Buku tidak ditemukan' });
     }
-    return res.json(book);
+    return res.json(result.rows[0]);
   } catch (err) {
+    console.error('Error get book detail:', err.message);
     res.status(500).json({ error: 'Gagal mengambil detail buku', details: err.message });
   }
 });
 
 // ==============================================================================
-// 3.1 UNIVERSAL MEDIA UPLOAD & CLEANUP (CLOUDINARY)
+// 4.2 UNIVERSAL MEDIA UPLOAD & CLEANUP (CLOUDINARY)
 // ==============================================================================
 
-// Upload Gambar ke Cloudinary (Mendukung folder covers, team, organization, general, dll)
+// Upload Gambar ke Cloudinary
 app.post('/api/upload/image', uploadMiddleware.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -747,7 +579,6 @@ app.post('/api/upload/image', uploadMiddleware.single('file'), async (req, res) 
     const folderParam = req.body.folder || req.query.folder || 'covers';
     const prefixParam = req.body.prefix || req.query.prefix || 'img';
 
-    // Standarisasi & sanitasi folder tujuan
     const allowedFolders = ['covers', 'team', 'organization', 'general', 'banners'];
     const subFolder = allowedFolders.includes(folderParam) ? folderParam : 'general';
     const targetFolder = `findlib-unsika/${subFolder}`;
@@ -770,7 +601,7 @@ app.post('/api/upload/image', uploadMiddleware.single('file'), async (req, res) 
   }
 });
 
-// Hapus Gambar dari Cloudinary (Zero Orphan Policy)
+// Hapus Gambar dari Cloudinary
 app.post('/api/upload/delete', async (req, res) => {
   try {
     const { public_id } = req.body;
@@ -815,58 +646,29 @@ app.post('/api/books', async (req, res) => {
     const isDemoBool = is_demo === true || is_demo === 'true';
     const prodiVal = prodi && prodi.trim().length > 0 ? prodi.trim() : null;
 
-    if (isPgConnected) {
-      const result = await pgPool.query(`
-        INSERT INTO books (
-          id, isbn, title, author, publisher, publish_year, page_count,
-          synopsis, category_id, prodi, rack_id, led_slot, is_demo, cover_url, cover_public_id,
-          total_stock, available_stock, borrowed_count, status
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-        RETURNING *
-      `, [
-        id, isbn || null, title, author, publisher || null,
-        publish_year ? parseInt(publish_year, 10) : null,
-        page_count ? parseInt(page_count, 10) : null,
-        synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
-        isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus
-      ]);
-      return res.status(201).json({ success: true, book: result.rows[0] });
-    } else {
-      const localDb = readLocalDb();
-      if (localDb.books.some(b => b.id === id)) {
-        return res.status(400).json({ error: `Buku dengan Kode [${id}] sudah ada!` });
-      }
+    const result = await dbQuery(`
+      INSERT INTO books (
+        id, isbn, title, author, publisher, publish_year, page_count,
+        synopsis, category_id, prodi, rack_id, led_slot, is_demo, cover_url, cover_public_id,
+        total_stock, available_stock, borrowed_count, status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      RETURNING *
+    `, [
+      id, isbn || null, title, author, publisher || null,
+      publish_year ? parseInt(publish_year, 10) : null,
+      page_count ? parseInt(page_count, 10) : null,
+      synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
+      isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus
+    ]);
 
-      const newBook = {
-        id,
-        isbn: isbn || '',
-        title,
-        author,
-        publisher: publisher || '',
-        publish_year: publish_year ? parseInt(publish_year, 10) : null,
-        page_count: page_count ? parseInt(page_count, 10) : null,
-        synopsis: synopsis || '',
-        category_id,
-        prodi: prodiVal,
-        rack_id,
-        led_slot: parseInt(led_slot, 10),
-        is_demo: isDemoBool,
-        cover_url: defaultCover,
-        cover_public_id: cleanPublicId,
-        total_stock: stockTotal,
-        available_stock: stockAvailable,
-        borrowed_count: stockBorrowed,
-        status: bookStatus
-      };
-
-      localDb.books.push(newBook);
-      writeLocalDb(localDb);
-      return res.status(201).json({ success: true, book: newBook });
-    }
+    return res.status(201).json({ success: true, book: result.rows[0] });
   } catch (err) {
     console.error('Error tambah buku:', err);
-    res.status(500).json({ error: 'Gagal menambah buku', details: err.message });
+    if (err.code === '23505') {
+      return res.status(400).json({ error: `Buku dengan ID/Barcode [${req.body.id}] sudah ada di database!` });
+    }
+    res.status(500).json({ error: 'Gagal menambah buku ke database', details: err.message });
   }
 });
 
@@ -895,77 +697,38 @@ app.put('/api/books/:id', async (req, res) => {
     const isDemoBool = is_demo === true || is_demo === 'true';
     const prodiVal = prodi && prodi.trim().length > 0 ? prodi.trim() : null;
 
-    if (isPgConnected) {
-      // Ambil public_id lama untuk pembersihan jika cover diganti
-      const oldBookRes = await pgPool.query('SELECT cover_public_id FROM books WHERE id = $1', [bookId]);
-      const oldPublicId = oldBookRes.rows.length > 0 ? oldBookRes.rows[0].cover_public_id : null;
+    // Ambil public_id lama untuk pembersihan jika cover diganti
+    const oldBookRes = await dbQuery('SELECT cover_public_id FROM books WHERE id = $1', [bookId]);
+    const oldPublicId = oldBookRes.rows.length > 0 ? oldBookRes.rows[0].cover_public_id : null;
 
-      const result = await pgPool.query(`
-        UPDATE books SET
-          isbn = $1, title = $2, author = $3, publisher = $4,
-          publish_year = $5, page_count = $6, synopsis = $7,
-          category_id = $8, prodi = $9, rack_id = $10, led_slot = $11,
-          is_demo = $12, cover_url = $13, cover_public_id = $14, total_stock = $15, available_stock = $16,
-          borrowed_count = $17, status = $18, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $19
-        RETURNING *
-      `, [
-        isbn || null, title, author, publisher || null,
-        publish_year ? parseInt(publish_year, 10) : null,
-        page_count ? parseInt(page_count, 10) : null,
-        synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
-        isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus,
-        bookId
-      ]);
+    const result = await dbQuery(`
+      UPDATE books SET
+        isbn = $1, title = $2, author = $3, publisher = $4,
+        publish_year = $5, page_count = $6, synopsis = $7,
+        category_id = $8, prodi = $9, rack_id = $10, led_slot = $11,
+        is_demo = $12, cover_url = $13, cover_public_id = $14, total_stock = $15, available_stock = $16,
+        borrowed_count = $17, status = $18, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $19
+      RETURNING *
+    `, [
+      isbn || null, title, author, publisher || null,
+      publish_year ? parseInt(publish_year, 10) : null,
+      page_count ? parseInt(page_count, 10) : null,
+      synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
+      isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus,
+      bookId
+    ]);
 
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Buku tidak ditemukan' });
-      }
-
-      // Bersihkan gambar lama di Cloudinary jika diganti
-      if (oldPublicId && cleanPublicId && oldPublicId !== cleanPublicId) {
-        deleteFromCloudinary(oldPublicId);
-      }
-
-      return res.json({ success: true, book: result.rows[0] });
-    } else {
-      const localDb = readLocalDb();
-      const index = localDb.books.findIndex(b => b.id === bookId);
-      if (index === -1) {
-        return res.status(404).json({ error: 'Buku tidak ditemukan' });
-      }
-
-      const oldPublicId = localDb.books[index].cover_public_id;
-
-      localDb.books[index] = {
-        ...localDb.books[index],
-        isbn: isbn || localDb.books[index].isbn,
-        title: title || localDb.books[index].title,
-        author: author || localDb.books[index].author,
-        publisher: publisher || localDb.books[index].publisher,
-        publish_year: publish_year ? parseInt(publish_year, 10) : localDb.books[index].publish_year,
-        page_count: page_count ? parseInt(page_count, 10) : localDb.books[index].page_count,
-        synopsis: synopsis !== undefined ? synopsis : localDb.books[index].synopsis,
-        category_id: category_id || localDb.books[index].category_id,
-        prodi: prodiVal,
-        rack_id: rack_id || localDb.books[index].rack_id,
-        led_slot: led_slot ? parseInt(led_slot, 10) : localDb.books[index].led_slot,
-        is_demo: is_demo !== undefined ? isDemoBool : localDb.books[index].is_demo,
-        cover_url: defaultCover,
-        cover_public_id: cleanPublicId,
-        total_stock: stockTotal,
-        available_stock: stockAvailable,
-        borrowed_count: stockBorrowed,
-        status: bookStatus
-      };
-
-      if (oldPublicId && cleanPublicId && oldPublicId !== cleanPublicId) {
-        deleteFromCloudinary(oldPublicId);
-      }
-
-      writeLocalDb(localDb);
-      return res.json({ success: true, book: localDb.books[index] });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Buku tidak ditemukan' });
     }
+
+    // Bersihkan gambar lama di Cloudinary jika diganti
+    if (oldPublicId && cleanPublicId && oldPublicId !== cleanPublicId) {
+      deleteFromCloudinary(oldPublicId);
+    }
+
+    return res.json({ success: true, book: result.rows[0] });
   } catch (err) {
     console.error('Error edit buku:', err);
     res.status(500).json({ error: 'Gagal mengupdate buku', details: err.message });
@@ -976,56 +739,36 @@ app.put('/api/books/:id', async (req, res) => {
 app.delete('/api/books/:id', async (req, res) => {
   try {
     const bookId = req.params.id;
-    if (isPgConnected) {
-      const result = await pgPool.query('DELETE FROM books WHERE id = $1 RETURNING *', [bookId]);
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Buku tidak ditemukan' });
-      }
-      const deletedBook = result.rows[0];
-      if (deletedBook.cover_public_id) {
-        deleteFromCloudinary(deletedBook.cover_public_id);
-      }
-      return res.json({ success: true, message: `Buku [${bookId}] berhasil dihapus.` });
-    } else {
-      const localDb = readLocalDb();
-      const index = localDb.books.findIndex(b => b.id === bookId);
-      if (index === -1) {
-        return res.status(404).json({ error: 'Buku tidak ditemukan' });
-      }
-      const [deletedBook] = localDb.books.splice(index, 1);
-      if (deletedBook && deletedBook.cover_public_id) {
-        deleteFromCloudinary(deletedBook.cover_public_id);
-      }
-      writeLocalDb(localDb);
-      return res.json({ success: true, message: `Buku [${bookId}] berhasil dihapus.` });
+    const result = await dbQuery('DELETE FROM books WHERE id = $1 RETURNING *', [bookId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Buku tidak ditemukan' });
     }
+    const deletedBook = result.rows[0];
+    if (deletedBook.cover_public_id) {
+      deleteFromCloudinary(deletedBook.cover_public_id);
+    }
+    return res.json({ success: true, message: `Buku [${bookId}] berhasil dihapus.` });
   } catch (err) {
+    console.error('Error hapus buku:', err.message);
     res.status(500).json({ error: 'Gagal menghapus buku', details: err.message });
   }
 });
 
 // ==============================================================================
-// 3.2 STRUKTUR ORGANISASI & PROFIL TIM DINAMIS (ABOUT / TEAM)
+// 4.3 STRUKTUR ORGANISASI & PROFIL TIM DINAMIS (ABOUT / TEAM)
 // ==============================================================================
 
 // Ambil Daftar Anggota / Struktur Organisasi
 app.get('/api/organization', async (req, res) => {
   try {
-    if (isPgConnected) {
-      const result = await pgPool.query(`
-        SELECT * FROM organization_members 
-        ORDER BY display_order ASC, id ASC
-      `);
-      return res.json(result.rows);
-    } else {
-      const localDb = readLocalDb();
-      const members = localDb.organization_members || [];
-      members.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
-      return res.json(members);
-    }
+    const result = await dbQuery(`
+      SELECT * FROM organization_members 
+      ORDER BY display_order ASC, id ASC
+    `);
+    return res.json(result.rows);
   } catch (err) {
     console.error('Error ambil data organisasi:', err);
-    res.status(500).json({ error: 'Gagal mengambil data struktur organisasi' });
+    res.status(500).json({ error: 'Gagal mengambil data struktur organisasi', details: err.message });
   }
 });
 
@@ -1046,45 +789,18 @@ app.post('/api/organization', async (req, res) => {
     const divisionVal = division || 'Pengurus';
     const socialVal = social_links || {};
 
-    if (isPgConnected) {
-      const result = await pgPool.query(`
-        INSERT INTO organization_members (
-          name, role_title, division, photo_url, photo_public_id,
-          bio, display_order, social_links, is_active
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING *
-      `, [
-        name, role_title, divisionVal, photo_url || null, photo_public_id || null,
-        bio || '', orderNum, JSON.stringify(socialVal), activeBool
-      ]);
-      return res.status(201).json({ success: true, member: result.rows[0] });
-    } else {
-      const localDb = readLocalDb();
-      if (!localDb.organization_members) localDb.organization_members = [];
-
-      const newId = localDb.organization_members.length > 0 
-        ? Math.max(...localDb.organization_members.map(m => m.id || 0)) + 1 
-        : 1;
-
-      const newMember = {
-        id: newId,
-        name,
-        role_title,
-        division: divisionVal,
-        photo_url: photo_url || null,
-        photo_public_id: photo_public_id || null,
-        bio: bio || '',
-        display_order: orderNum,
-        social_links: socialVal,
-        is_active: activeBool,
-        created_at: new Date().toISOString()
-      };
-
-      localDb.organization_members.push(newMember);
-      writeLocalDb(localDb);
-      return res.status(201).json({ success: true, member: newMember });
-    }
+    const result = await dbQuery(`
+      INSERT INTO organization_members (
+        name, role_title, division, photo_url, photo_public_id,
+        bio, display_order, social_links, is_active
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+    `, [
+      name, role_title, divisionVal, photo_url || null, photo_public_id || null,
+      bio || '', orderNum, JSON.stringify(socialVal), activeBool
+    ]);
+    return res.status(201).json({ success: true, member: result.rows[0] });
   } catch (err) {
     console.error('Error tambah anggota organisasi:', err);
     res.status(500).json({ error: 'Gagal menambah anggota organisasi', details: err.message });
@@ -1105,61 +821,30 @@ app.put('/api/organization/:id', async (req, res) => {
     const divisionVal = division || 'Pengurus';
     const socialVal = social_links || {};
 
-    if (isPgConnected) {
-      const oldRes = await pgPool.query('SELECT photo_public_id FROM organization_members WHERE id = $1', [memberId]);
-      const oldPublicId = oldRes.rows.length > 0 ? oldRes.rows[0].photo_public_id : null;
+    const oldRes = await dbQuery('SELECT photo_public_id FROM organization_members WHERE id = $1', [memberId]);
+    const oldPublicId = oldRes.rows.length > 0 ? oldRes.rows[0].photo_public_id : null;
 
-      const result = await pgPool.query(`
-        UPDATE organization_members SET
-          name = $1, role_title = $2, division = $3, photo_url = $4, photo_public_id = $5,
-          bio = $6, display_order = $7, social_links = $8, is_active = $9, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $10
-        RETURNING *
-      `, [
-        name, role_title, divisionVal, photo_url || null, photo_public_id || null,
-        bio || '', orderNum, JSON.stringify(socialVal), activeBool,
-        memberId
-      ]);
+    const result = await dbQuery(`
+      UPDATE organization_members SET
+        name = $1, role_title = $2, division = $3, photo_url = $4, photo_public_id = $5,
+        bio = $6, display_order = $7, social_links = $8, is_active = $9, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $10
+      RETURNING *
+    `, [
+      name, role_title, divisionVal, photo_url || null, photo_public_id || null,
+      bio || '', orderNum, JSON.stringify(socialVal), activeBool,
+      memberId
+    ]);
 
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
-      }
-
-      if (oldPublicId && photo_public_id && oldPublicId !== photo_public_id) {
-        deleteFromCloudinary(oldPublicId);
-      }
-
-      return res.json({ success: true, member: result.rows[0] });
-    } else {
-      const localDb = readLocalDb();
-      if (!localDb.organization_members) localDb.organization_members = [];
-      const idx = localDb.organization_members.findIndex(m => m.id === memberId);
-      if (idx === -1) {
-        return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
-      }
-
-      const oldPublicId = localDb.organization_members[idx].photo_public_id;
-      localDb.organization_members[idx] = {
-        ...localDb.organization_members[idx],
-        name: name || localDb.organization_members[idx].name,
-        role_title: role_title || localDb.organization_members[idx].role_title,
-        division: divisionVal,
-        photo_url: photo_url !== undefined ? photo_url : localDb.organization_members[idx].photo_url,
-        photo_public_id: photo_public_id !== undefined ? photo_public_id : localDb.organization_members[idx].photo_public_id,
-        bio: bio !== undefined ? bio : localDb.organization_members[idx].bio,
-        display_order: orderNum,
-        social_links: socialVal,
-        is_active: activeBool,
-        updated_at: new Date().toISOString()
-      };
-
-      if (oldPublicId && photo_public_id && oldPublicId !== photo_public_id) {
-        deleteFromCloudinary(oldPublicId);
-      }
-
-      writeLocalDb(localDb);
-      return res.json({ success: true, member: localDb.organization_members[idx] });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
     }
+
+    if (oldPublicId && photo_public_id && oldPublicId !== photo_public_id) {
+      deleteFromCloudinary(oldPublicId);
+    }
+
+    return res.json({ success: true, member: result.rows[0] });
   } catch (err) {
     console.error('Error update anggota organisasi:', err);
     res.status(500).json({ error: 'Gagal mengupdate data organisasi', details: err.message });
@@ -1170,30 +855,15 @@ app.put('/api/organization/:id', async (req, res) => {
 app.delete('/api/organization/:id', async (req, res) => {
   try {
     const memberId = parseInt(req.params.id, 10);
-    if (isPgConnected) {
-      const result = await pgPool.query('DELETE FROM organization_members WHERE id = $1 RETURNING *', [memberId]);
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
-      }
-      const deletedMember = result.rows[0];
-      if (deletedMember.photo_public_id) {
-        deleteFromCloudinary(deletedMember.photo_public_id);
-      }
-      return res.json({ success: true, message: 'Anggota organisasi berhasil dihapus' });
-    } else {
-      const localDb = readLocalDb();
-      if (!localDb.organization_members) localDb.organization_members = [];
-      const idx = localDb.organization_members.findIndex(m => m.id === memberId);
-      if (idx === -1) {
-        return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
-      }
-      const [deletedMember] = localDb.organization_members.splice(idx, 1);
-      if (deletedMember && deletedMember.photo_public_id) {
-        deleteFromCloudinary(deletedMember.photo_public_id);
-      }
-      writeLocalDb(localDb);
-      return res.json({ success: true, message: 'Anggota organisasi berhasil dihapus' });
+    const result = await dbQuery('DELETE FROM organization_members WHERE id = $1 RETURNING *', [memberId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Anggota organisasi tidak ditemukan' });
     }
+    const deletedMember = result.rows[0];
+    if (deletedMember.photo_public_id) {
+      deleteFromCloudinary(deletedMember.photo_public_id);
+    }
+    return res.json({ success: true, message: 'Anggota organisasi berhasil dihapus' });
   } catch (err) {
     console.error('Error hapus anggota organisasi:', err);
     res.status(500).json({ error: 'Gagal menghapus anggota organisasi', details: err.message });
@@ -1204,40 +874,20 @@ app.delete('/api/organization/:id', async (req, res) => {
 app.post('/api/locate/:id', async (req, res) => {
   try {
     const bookId = req.params.id;
-    let book = null;
+    const result = await dbQuery(`
+      SELECT b.*, c.name as category_name, c.color_hex, 
+             r.rack_name, r.level_number, r.led_start_index, r.led_end_index
+      FROM books b
+      LEFT JOIN categories c ON b.category_id = c.id
+      LEFT JOIN racks r ON b.rack_id = r.id
+      WHERE b.id = $1
+    `, [bookId]);
 
-    if (isPgConnected) {
-      const result = await pgPool.query(`
-        SELECT b.*, c.name as category_name, c.color_hex, 
-               r.rack_name, r.level_number, r.led_start_index, r.led_end_index
-        FROM books b
-        LEFT JOIN categories c ON b.category_id = c.id
-        LEFT JOIN racks r ON b.rack_id = r.id
-        WHERE b.id = $1
-      `, [bookId]);
-      if (result.rows.length > 0) book = result.rows[0];
-    } else {
-      const localDb = readLocalDb();
-      const found = localDb.books.find(b => b.id === bookId);
-      if (found) {
-        const cat = localDb.categories.find(c => c.id === found.category_id);
-        const rack = localDb.racks.find(r => r.id === found.rack_id);
-        book = {
-          ...found,
-          category_name: cat ? cat.name : 'Umum',
-          color_hex: cat ? cat.color_hex : '#22C55E',
-          rack_name: rack ? rack.rack_name : 'Rak Utama',
-          level_number: rack ? rack.level_number : 1,
-          led_start_index: rack ? rack.led_start_index : 1,
-          led_end_index: rack ? rack.led_end_index : 4
-        };
-      }
-    }
-
-    if (!book) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: `Buku [${bookId}] tidak ditemukan.` });
     }
 
+    const book = result.rows[0];
     const settings = await getAppSettings();
     const duration = parseInt(settings.led_duration_seconds || process.env.LED_ANIMATION_DURATION || '15', 10);
     const mqttPayload = {
@@ -1278,32 +928,18 @@ app.get('/api/members', async (req, res) => {
   const { q } = req.query;
 
   try {
-    if (isPgConnected) {
-      let query = 'SELECT * FROM members';
-      let params = [];
-      if (q) {
-        query += ' WHERE nim ILIKE $1 OR name ILIKE $1 OR prodi ILIKE $1';
-        params.push(`%${q}%`);
-      }
-      query += ' ORDER BY name ASC';
-      const result = await pgPool.query(query, params);
-      return res.json(result.rows);
-    } else {
-      const localDb = readLocalDb();
-      let list = localDb.members || [];
-      if (q) {
-        const queryLower = q.toLowerCase();
-        list = list.filter(m =>
-          m.nim.toLowerCase().includes(queryLower) ||
-          m.name.toLowerCase().includes(queryLower) ||
-          m.prodi.toLowerCase().includes(queryLower)
-        );
-      }
-      return res.json(list);
+    let query = 'SELECT * FROM members';
+    let params = [];
+    if (q) {
+      query += ' WHERE nim ILIKE $1 OR name ILIKE $1 OR prodi ILIKE $1';
+      params.push(`%${q}%`);
     }
+    query += ' ORDER BY name ASC';
+    const result = await dbQuery(query, params);
+    return res.json(result.rows);
   } catch (err) {
     console.error('Error get members:', err);
-    res.status(500).json({ error: 'Gagal mengambil data mahasiswa.' });
+    res.status(500).json({ error: 'Gagal mengambil data mahasiswa dari database.', details: err.message });
   }
 });
 
@@ -1312,23 +948,14 @@ app.get('/api/members/:nim', async (req, res) => {
   const { nim } = req.params;
 
   try {
-    if (isPgConnected) {
-      const result = await pgPool.query('SELECT * FROM members WHERE nim = $1', [nim]);
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Mahasiswa belum terdaftar.' });
-      }
-      return res.json(result.rows[0]);
-    } else {
-      const localDb = readLocalDb();
-      const member = (localDb.members || []).find(m => m.nim === nim);
-      if (!member) {
-        return res.status(404).json({ error: 'Mahasiswa belum terdaftar.' });
-      }
-      return res.json(member);
+    const result = await dbQuery('SELECT * FROM members WHERE nim = $1', [nim]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Mahasiswa belum terdaftar.' });
     }
+    return res.json(result.rows[0]);
   } catch (err) {
     console.error('Error get member by nim:', err);
-    res.status(500).json({ error: 'Gagal mencari mahasiswa.' });
+    res.status(500).json({ error: 'Gagal mencari mahasiswa.', details: err.message });
   }
 });
 
@@ -1341,29 +968,16 @@ app.post('/api/members', async (req, res) => {
   }
 
   try {
-    if (isPgConnected) {
-      await pgPool.query(`
-        INSERT INTO members (nim, name, prodi, phone)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (nim) DO UPDATE 
-        SET name = EXCLUDED.name, prodi = EXCLUDED.prodi, phone = EXCLUDED.phone
-      `, [nim, name, prodi, phone]);
-      return res.json({ success: true, message: 'Data mahasiswa berhasil disimpan!' });
-    } else {
-      const localDb = readLocalDb();
-      if (!localDb.members) localDb.members = [];
-      const idx = localDb.members.findIndex(m => m.nim === nim);
-      if (idx !== -1) {
-        localDb.members[idx] = { nim, name, prodi, phone };
-      } else {
-        localDb.members.push({ nim, name, prodi, phone });
-      }
-      saveLocalDb(localDb);
-      return res.json({ success: true, message: 'Data mahasiswa berhasil disimpan (Lokal)!' });
-    }
+    await dbQuery(`
+      INSERT INTO members (nim, name, prodi, phone)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (nim) DO UPDATE 
+      SET name = EXCLUDED.name, prodi = EXCLUDED.prodi, phone = EXCLUDED.phone
+    `, [nim, name, prodi, phone]);
+    return res.json({ success: true, message: 'Data mahasiswa berhasil disimpan!' });
   } catch (err) {
     console.error('Error save member:', err);
-    res.status(500).json({ error: 'Gagal menyimpan data mahasiswa.' });
+    res.status(500).json({ error: 'Gagal menyimpan data mahasiswa ke database.', details: err.message });
   }
 });
 
@@ -1372,20 +986,11 @@ app.delete('/api/members/:nim', async (req, res) => {
   const { nim } = req.params;
 
   try {
-    if (isPgConnected) {
-      await pgPool.query('DELETE FROM members WHERE nim = $1', [nim]);
-      return res.json({ success: true, message: 'Data mahasiswa berhasil dihapus.' });
-    } else {
-      const localDb = readLocalDb();
-      if (localDb.members) {
-        localDb.members = localDb.members.filter(m => m.nim !== nim);
-        saveLocalDb(localDb);
-      }
-      return res.json({ success: true, message: 'Data mahasiswa berhasil dihapus (Lokal).' });
-    }
+    await dbQuery('DELETE FROM members WHERE nim = $1', [nim]);
+    return res.json({ success: true, message: 'Data mahasiswa berhasil dihapus.' });
   } catch (err) {
     console.error('Error delete member:', err);
-    res.status(500).json({ error: 'Gagal menghapus mahasiswa.' });
+    res.status(500).json({ error: 'Gagal menghapus mahasiswa dari database.', details: err.message });
   }
 });
 
@@ -1398,122 +1003,64 @@ app.get('/api/loans', async (req, res) => {
   const { status, q } = req.query;
 
   try {
-    if (isPgConnected) {
-      let query = `
-        SELECT 
-          l.id, 
-          l.member_nim, 
-          m.name AS member_name, 
-          m.prodi AS member_prodi, 
-          m.phone AS member_phone,
-          l.book_id, 
-          b.title AS book_title, 
-          b.cover_url AS book_cover, 
-          b.rack_id,
-          b.led_slot,
-          r.rack_name,
-          r.level_number,
-          TO_CHAR(l.borrow_date, 'YYYY-MM-DD') AS borrow_date, 
-          TO_CHAR(l.due_date, 'YYYY-MM-DD') AS due_date, 
-          TO_CHAR(l.return_date, 'YYYY-MM-DD') AS return_date, 
-          l.extension_count,
-          l.notes,
-          CASE 
-            WHEN l.return_date IS NOT NULL THEN 'RETURNED'
-            WHEN CURRENT_DATE > l.due_date THEN 'OVERDUE'
-            WHEN l.extension_count > 0 THEN 'EXTENDED'
-            ELSE 'BORROWED'
-          END AS calculated_status,
-          CASE 
-            WHEN l.return_date IS NULL AND CURRENT_DATE > l.due_date 
-            THEN (CURRENT_DATE - l.due_date) 
-            ELSE 0 
-          END AS days_overdue
-        FROM loans l
-        LEFT JOIN members m ON l.member_nim = m.nim
-        LEFT JOIN books b ON l.book_id = b.id
-        LEFT JOIN racks r ON b.rack_id = r.id
-        WHERE 1=1
-      `;
-      let params = [];
+    let query = `
+      SELECT 
+        l.id, 
+        l.member_nim, 
+        m.name AS member_name, 
+        m.prodi AS member_prodi, 
+        m.phone AS member_phone,
+        l.book_id, 
+        b.title AS book_title, 
+        b.cover_url AS book_cover, 
+        b.rack_id,
+        b.led_slot,
+        r.rack_name,
+        r.level_number,
+        TO_CHAR(l.borrow_date, 'YYYY-MM-DD') AS borrow_date, 
+        TO_CHAR(l.due_date, 'YYYY-MM-DD') AS due_date, 
+        TO_CHAR(l.return_date, 'YYYY-MM-DD') AS return_date, 
+        l.extension_count,
+        l.notes,
+        CASE 
+          WHEN l.return_date IS NOT NULL THEN 'RETURNED'
+          WHEN CURRENT_DATE > l.due_date THEN 'OVERDUE'
+          WHEN l.extension_count > 0 THEN 'EXTENDED'
+          ELSE 'BORROWED'
+        END AS calculated_status,
+        CASE 
+          WHEN l.return_date IS NULL AND CURRENT_DATE > l.due_date 
+          THEN (CURRENT_DATE - l.due_date) 
+          ELSE 0 
+        END AS days_overdue
+      FROM loans l
+      LEFT JOIN members m ON l.member_nim = m.nim
+      LEFT JOIN books b ON l.book_id = b.id
+      LEFT JOIN racks r ON b.rack_id = r.id
+      WHERE 1=1
+    `;
+    let params = [];
 
-      if (status === 'ACTIVE') {
-        query += " AND l.return_date IS NULL";
-      } else if (status === 'OVERDUE') {
-        query += " AND l.return_date IS NULL AND CURRENT_DATE > l.due_date";
-      } else if (status === 'RETURNED') {
-        query += " AND l.return_date IS NOT NULL";
-      }
-
-      if (q) {
-        params.push(`%${q}%`);
-        query += ` AND (m.name ILIKE $${params.length} OR m.nim ILIKE $${params.length} OR b.title ILIKE $${params.length} OR l.id ILIKE $${params.length})`;
-      }
-
-      query += " ORDER BY CASE WHEN l.return_date IS NULL AND CURRENT_DATE > l.due_date THEN 0 ELSE 1 END, l.due_date ASC";
-
-      const result = await safePgQuery(query, params);
-      if (result && result.rows) {
-        return res.json(result.rows);
-      }
-      // Fallback to local DB if safePgQuery returns null
-      const localDb = readLocalDb();
-      const todayStr = new Date().toISOString().split('T')[0];
-      const today = new Date(todayStr);
-
-      let list = (localDb.loans || []).map(l => {
-        const member = (localDb.members || []).find(m => m.nim === l.member_nim) || {};
-        const book = (localDb.books || []).find(b => b.id === l.book_id) || {};
-        const rack = (localDb.racks || []).find(r => r.id === book.rack_id) || {};
-
-        const dueDate = new Date(l.due_date);
-        const isOverdue = !l.return_date && today > dueDate;
-        const diffTime = today - dueDate;
-        const daysOverdue = isOverdue ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 0;
-
-        let calcStatus = 'BORROWED';
-        if (l.return_date) calcStatus = 'RETURNED';
-        else if (isOverdue) calcStatus = 'OVERDUE';
-        else if ((l.extension_count || 0) > 0) calcStatus = 'EXTENDED';
-
-        return {
-          ...l,
-          member_name: member.name || 'Mahasiswa',
-          member_prodi: member.prodi || '-',
-          member_phone: member.phone || '-',
-          book_title: book.title || 'Buku Perpustakaan',
-          book_cover: book.cover_url || '',
-          rack_name: rack.rack_name || 'Rak Utama',
-          level_number: rack.level_number || 1,
-          led_slot: book.led_slot || 1,
-          calculated_status: calcStatus,
-          days_overdue: daysOverdue
-        };
-      });
-
-      if (status === 'ACTIVE') {
-        list = list.filter(l => !l.return_date);
-      } else if (status === 'OVERDUE') {
-        list = list.filter(l => l.calculated_status === 'OVERDUE');
-      } else if (status === 'RETURNED') {
-        list = list.filter(l => l.return_date);
-      }
-
-      if (q) {
-        const qLower = q.toLowerCase();
-        list = list.filter(l =>
-          l.member_name.toLowerCase().includes(qLower) ||
-          l.member_nim.toLowerCase().includes(qLower) ||
-          l.book_title.toLowerCase().includes(qLower) ||
-          l.id.toLowerCase().includes(qLower)
-        );
-      }
-
-      return res.json(list);
+    if (status === 'ACTIVE') {
+      query += " AND l.return_date IS NULL";
+    } else if (status === 'OVERDUE') {
+      query += " AND l.return_date IS NULL AND CURRENT_DATE > l.due_date";
+    } else if (status === 'RETURNED') {
+      query += " AND l.return_date IS NOT NULL";
     }
+
+    if (q) {
+      params.push(`%${q}%`);
+      query += ` AND (m.name ILIKE $${params.length} OR m.nim ILIKE $${params.length} OR b.title ILIKE $${params.length} OR l.id ILIKE $${params.length})`;
+    }
+
+    query += " ORDER BY CASE WHEN l.return_date IS NULL AND CURRENT_DATE > l.due_date THEN 0 ELSE 1 END, l.due_date ASC";
+
+    const result = await dbQuery(query, params);
+    return res.json(result.rows);
   } catch (err) {
     console.error('Error get loans:', err);
-    res.status(500).json({ error: 'Gagal mengambil data peminjaman.' });
+    res.status(500).json({ error: 'Gagal mengambil data peminjaman dari database.', details: err.message });
   }
 });
 
@@ -1531,144 +1078,73 @@ app.post('/api/loans', async (req, res) => {
     const maxBooks = parseInt(settings.max_books_per_member || '3', 10);
     const loanId = `PJ-${Date.now().toString().slice(-6)}`;
 
-    if (isPgConnected) {
-      // 1. Cek batas maksimal peminjaman aktif per mahasiswa
-      const activeLoansRes = await pgPool.query(`
-        SELECT COUNT(*) FROM loans 
-        WHERE member_nim = $1 AND return_date IS NULL
-      `, [member_nim]);
-      const activeCount = parseInt(activeLoansRes.rows[0].count, 10);
-      if (activeCount >= maxBooks) {
-        return res.status(400).json({
-          error: `Mahasiswa dengan NIM ${member_nim} telah mencapai batas peminjaman maksimal (${maxBooks} buku aktif). Harap kembalikan buku sebelumnya terlebih dahulu.`
-        });
-      }
-
-      // 2. Pastikan mahasiswa tersimpan di tabel members
-      if (member_name && member_prodi && member_phone) {
-        await pgPool.query(`
-          INSERT INTO members (nim, name, prodi, phone)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (nim) DO UPDATE 
-          SET name = EXCLUDED.name, prodi = EXCLUDED.prodi, phone = EXCLUDED.phone
-        `, [member_nim, member_name, member_prodi, member_phone]);
-      }
-
-      // 3. Cek ketersediaan stok buku
-      const bookRes = await pgPool.query('SELECT available_stock, title FROM books WHERE id = $1', [book_id]);
-      if (bookRes.rows.length === 0) {
-        return res.status(404).json({ error: 'Buku tidak ditemukan.' });
-      }
-      if ((bookRes.rows[0].available_stock || 0) <= 0) {
-        return res.status(400).json({ error: `Buku "${bookRes.rows[0].title}" sedang habis dipinjam!` });
-      }
-
-      // 4. Buat transaksi peminjaman (Batas dinamis sesuai settings)
-      const insertRes = await pgPool.query(`
-        INSERT INTO loans (id, member_nim, book_id, borrow_date, due_date, status, notes)
-        VALUES ($1, $2, $3, CURRENT_DATE, CURRENT_DATE + ($5 || ' days')::INTERVAL, 'BORROWED', $4)
-        RETURNING id, member_nim, book_id, TO_CHAR(borrow_date, 'YYYY-MM-DD') AS borrow_date, TO_CHAR(due_date, 'YYYY-MM-DD') AS due_date, status, notes
-      `, [loanId, member_nim, book_id, notes || 'Peminjaman Mahasiswa', loanDays]);
-
-      const loanRow = insertRes.rows[0];
-
-      // 5. Kurangi stok buku
-      await pgPool.query(`
-        UPDATE books 
-        SET available_stock = GREATEST(0, available_stock - 1),
-            borrowed_count = borrowed_count + 1
-        WHERE id = $1
-      `, [book_id]);
-
-      return res.json({
-        success: true,
-        message: 'Transaksi peminjaman berhasil disimpan!',
-        data: {
-          loan_id: loanId,
-          member_nim: member_nim,
-          member_name: member_name || member_nim,
-          member_prodi: member_prodi || '',
-          book_id: book_id,
-          book_title: bookRes.rows[0].title,
-          borrow_date: loanRow.borrow_date,
-          due_date: loanRow.due_date,
-          loan_days: loanDays,
-          status: 'BORROWED'
-        }
-      });
-    } else {
-      const localDb = readLocalDb();
-      if (!localDb.members) localDb.members = [];
-      if (!localDb.loans) localDb.loans = [];
-
-      // Cek batas maksimal buku aktif
-      const activeCount = localDb.loans.filter(l => l.member_nim === member_nim && !l.return_date).length;
-      if (activeCount >= maxBooks) {
-        return res.status(400).json({
-          error: `Mahasiswa dengan NIM ${member_nim} telah mencapai batas peminjaman maksimal (${maxBooks} buku aktif).`
-        });
-      }
-
-      // Auto-register member
-      if (member_name) {
-        const mIdx = localDb.members.findIndex(m => m.nim === member_nim);
-        if (mIdx !== -1) {
-          localDb.members[mIdx] = { nim: member_nim, name: member_name, prodi: member_prodi, phone: member_phone };
-        } else {
-          localDb.members.push({ nim: member_nim, name: member_name, prodi: member_prodi, phone: member_phone });
-        }
-      }
-
-      // Cek stok buku
-      const book = (localDb.books || []).find(b => b.id === book_id);
-      if (!book) return res.status(404).json({ error: 'Buku tidak ditemukan.' });
-      if ((book.available_stock || 0) <= 0) {
-        return res.status(400).json({ error: `Buku "${book.title}" sedang habis!` });
-      }
-
-      const today = new Date();
-      const due = new Date();
-      due.setDate(today.getDate() + loanDays);
-
-      const newLoan = {
-        id: loanId,
-        member_nim,
-        book_id,
-        borrow_date: today.toISOString().split('T')[0],
-        due_date: due.toISOString().split('T')[0],
-        return_date: null,
-        extension_count: 0,
-        status: 'BORROWED',
-        notes: notes || ''
-      };
-
-      localDb.loans.push(newLoan);
-
-      // Update stok
-      book.available_stock = Math.max(0, (book.available_stock || 1) - 1);
-      book.borrowed_count = (book.borrowed_count || 0) + 1;
-
-      saveLocalDb(localDb);
-      return res.json({
-        success: true,
-        message: 'Transaksi peminjaman berhasil (Lokal)!',
-        data: {
-          loan_id: loanId,
-          member_nim: member_nim,
-          member_name: member_name || member_nim,
-          member_prodi: member_prodi || '',
-          book_id: book_id,
-          book_title: book.title,
-          borrow_date: newLoan.borrow_date,
-          due_date: newLoan.due_date,
-          loan_days: loanDays,
-          status: 'BORROWED'
-        }
+    // 1. Cek batas maksimal peminjaman aktif per mahasiswa
+    const activeLoansRes = await dbQuery(`
+      SELECT COUNT(*) FROM loans 
+      WHERE member_nim = $1 AND return_date IS NULL
+    `, [member_nim]);
+    const activeCount = parseInt(activeLoansRes.rows[0].count, 10);
+    if (activeCount >= maxBooks) {
+      return res.status(400).json({
+        error: `Mahasiswa dengan NIM ${member_nim} telah mencapai batas peminjaman maksimal (${maxBooks} buku aktif). Harap kembalikan buku sebelumnya terlebih dahulu.`
       });
     }
+
+    // 2. Pastikan mahasiswa tersimpan di tabel members
+    if (member_name && member_prodi && member_phone) {
+      await dbQuery(`
+        INSERT INTO members (nim, name, prodi, phone)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (nim) DO UPDATE 
+        SET name = EXCLUDED.name, prodi = EXCLUDED.prodi, phone = EXCLUDED.phone
+      `, [member_nim, member_name, member_prodi, member_phone]);
+    }
+
+    // 3. Cek ketersediaan stok buku
+    const bookRes = await dbQuery('SELECT available_stock, title FROM books WHERE id = $1', [book_id]);
+    if (bookRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Buku tidak ditemukan.' });
+    }
+    if ((bookRes.rows[0].available_stock || 0) <= 0) {
+      return res.status(400).json({ error: `Buku "${bookRes.rows[0].title}" sedang habis dipinjam!` });
+    }
+
+    // 4. Buat transaksi peminjaman (Batas dinamis sesuai settings)
+    const insertRes = await dbQuery(`
+      INSERT INTO loans (id, member_nim, book_id, borrow_date, due_date, status, notes)
+      VALUES ($1, $2, $3, CURRENT_DATE, CURRENT_DATE + ($5 || ' days')::INTERVAL, 'BORROWED', $4)
+      RETURNING id, member_nim, book_id, TO_CHAR(borrow_date, 'YYYY-MM-DD') AS borrow_date, TO_CHAR(due_date, 'YYYY-MM-DD') AS due_date, status, notes
+    `, [loanId, member_nim, book_id, notes || 'Peminjaman Mahasiswa', loanDays]);
+
+    const loanRow = insertRes.rows[0];
+
+    // 5. Kurangi stok buku
+    await dbQuery(`
+      UPDATE books 
+      SET available_stock = GREATEST(0, available_stock - 1),
+          borrowed_count = borrowed_count + 1
+      WHERE id = $1
+    `, [book_id]);
+
+    return res.json({
+      success: true,
+      message: 'Transaksi peminjaman berhasil disimpan!',
+      data: {
+        loan_id: loanId,
+        member_nim: member_nim,
+        member_name: member_name || member_nim,
+        member_prodi: member_prodi || '',
+        book_id: book_id,
+        book_title: bookRes.rows[0].title,
+        borrow_date: loanRow.borrow_date,
+        due_date: loanRow.due_date,
+        loan_days: loanDays,
+        status: 'BORROWED'
+      }
+    });
   } catch (err) {
     console.error('Error create loan:', err);
-    res.status(500).json({ error: 'Gagal membuat transaksi peminjaman.' });
+    res.status(500).json({ error: 'Gagal membuat transaksi peminjaman.', details: err.message });
   }
 });
 
@@ -1681,81 +1157,49 @@ app.post('/api/loans/:id/extend', async (req, res) => {
     const extensionDays = parseInt(settings.extension_days || '7', 10);
     const maxExtension = parseInt(settings.max_extension_count || '1', 10);
 
-    if (isPgConnected) {
-      const loanRes = await pgPool.query(`
-        SELECT l.*, b.title as book_title, m.name as member_name 
-        FROM loans l
-        LEFT JOIN books b ON l.book_id = b.id
-        LEFT JOIN members m ON l.member_nim = m.nim
-        WHERE l.id = $1
-      `, [id]);
-      if (loanRes.rows.length === 0) {
-        return res.status(404).json({ error: 'Data peminjaman tidak ditemukan.' });
-      }
-
-      const loan = loanRes.rows[0];
-      if (loan.return_date) {
-        return res.status(400).json({ error: 'Buku sudah dikembalikan, tidak dapat diperpanjang.' });
-      }
-      if ((loan.extension_count || 0) >= maxExtension) {
-        return res.status(400).json({ error: `Buku ini sudah pernah diperpanjang ${loan.extension_count} kali (Batas maksimal ${maxExtension}x tercapai).` });
-      }
-
-      // Tambah batas waktu sesuai extension_days
-      const updateRes = await pgPool.query(`
-        UPDATE loans 
-        SET due_date = due_date + ($2 || ' days')::INTERVAL,
-            extension_count = extension_count + 1,
-            status = 'EXTENDED'
-        WHERE id = $1
-        RETURNING TO_CHAR(due_date, 'YYYY-MM-DD') AS due_date, extension_count
-      `, [id, extensionDays]);
-
-      return res.json({
-        success: true,
-        message: `Peminjaman berhasil diperpanjang ${extensionDays} hari!`,
-        data: {
-          loan_id: id,
-          book_title: loan.book_title,
-          member_name: loan.member_name,
-          extension_days: extensionDays,
-          due_date: updateRes.rows[0].due_date
-        }
-      });
-    } else {
-      const localDb = readLocalDb();
-      const loan = (localDb.loans || []).find(l => l.id === id);
-      if (!loan) return res.status(404).json({ error: 'Peminjaman tidak ditemukan.' });
-      if (loan.return_date) return res.status(400).json({ error: 'Buku sudah dikembalikan.' });
-      if ((loan.extension_count || 0) >= maxExtension) {
-        return res.status(400).json({ error: `Maksimal perpanjangan ${maxExtension} kali.` });
-      }
-
-      const currentDue = new Date(loan.due_date);
-      currentDue.setDate(currentDue.getDate() + extensionDays);
-      loan.due_date = currentDue.toISOString().split('T')[0];
-      loan.extension_count = (loan.extension_count || 0) + 1;
-      loan.status = 'EXTENDED';
-
-      const book = (localDb.books || []).find(b => b.id === loan.book_id);
-      const member = (localDb.members || []).find(m => m.nim === loan.member_nim);
-
-      saveLocalDb(localDb);
-      return res.json({
-        success: true,
-        message: `Peminjaman berhasil diperpanjang ${extensionDays} hari (Lokal)!`,
-        data: {
-          loan_id: id,
-          book_title: book ? book.title : '',
-          member_name: member ? member.name : loan.member_nim,
-          extension_days: extensionDays,
-          due_date: loan.due_date
-        }
-      });
+    const loanRes = await dbQuery(`
+      SELECT l.*, b.title as book_title, m.name as member_name 
+      FROM loans l
+      LEFT JOIN books b ON l.book_id = b.id
+      LEFT JOIN members m ON l.member_nim = m.nim
+      WHERE l.id = $1
+    `, [id]);
+    if (loanRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Data peminjaman tidak ditemukan.' });
     }
+
+    const loan = loanRes.rows[0];
+    if (loan.return_date) {
+      return res.status(400).json({ error: 'Buku sudah dikembalikan, tidak dapat diperpanjang.' });
+    }
+    if ((loan.extension_count || 0) >= maxExtension) {
+      return res.status(400).json({ error: `Buku ini sudah pernah diperpanjang ${loan.extension_count} kali (Batas maksimal ${maxExtension}x tercapai).` });
+    }
+
+    // Tambah batas waktu sesuai extension_days
+    const updateRes = await dbQuery(`
+      UPDATE loans 
+      SET due_date = due_date + ($2 || ' days')::INTERVAL,
+          extension_count = extension_count + 1,
+          status = 'EXTENDED'
+      WHERE id = $1
+      RETURNING TO_CHAR(due_date, 'YYYY-MM-DD') AS due_date, extension_count
+    `, [id, extensionDays]);
+
+    return res.json({
+      success: true,
+      message: `Peminjaman berhasil diperpanjang ${extensionDays} hari!`,
+      data: {
+        loan_id: id,
+        book_title: loan.book_title,
+        member_name: loan.member_name,
+        extension_days: extensionDays,
+        due_date: updateRes.rows[0].due_date
+      }
+    });
   } catch (err) {
     console.error('Error extend loan:', err);
-    res.status(500).json({ error: 'Gagal memperpanjang peminjaman.' });
+    res.status(500).json({ error: 'Gagal memperpanjang peminjaman.', details: err.message });
   }
 });
 
@@ -1764,55 +1208,36 @@ app.post('/api/loans/:id/return', async (req, res) => {
   const { id } = req.params;
 
   try {
-    if (isPgConnected) {
-      const loanRes = await pgPool.query('SELECT * FROM loans WHERE id = $1', [id]);
-      if (loanRes.rows.length === 0) {
-        return res.status(404).json({ error: 'Peminjaman tidak ditemukan.' });
-      }
-
-      const loan = loanRes.rows[0];
-      if (loan.return_date) {
-        return res.status(400).json({ error: 'Buku ini sudah tercatat telah dikembalikan.' });
-      }
-
-      // 1. Update status peminjaman menjadi RETURNED
-      await pgPool.query(`
-        UPDATE loans 
-        SET return_date = CURRENT_DATE,
-            status = 'RETURNED'
-        WHERE id = $1
-      `, [id]);
-
-      // 2. Kembalikan stok buku
-      await pgPool.query(`
-        UPDATE books 
-        SET available_stock = available_stock + 1,
-            borrowed_count = GREATEST(0, borrowed_count - 1)
-        WHERE id = $1
-      `, [loan.book_id]);
-
-      return res.json({ success: true, message: 'Buku berhasil dikembalikan! Stok rak telah diperbarui.' });
-    } else {
-      const localDb = readLocalDb();
-      const loan = (localDb.loans || []).find(l => l.id === id);
-      if (!loan) return res.status(404).json({ error: 'Peminjaman tidak ditemukan.' });
-      if (loan.return_date) return res.status(400).json({ error: 'Buku sudah dikembalikan.' });
-
-      loan.return_date = new Date().toISOString().split('T')[0];
-      loan.status = 'RETURNED';
-
-      const book = (localDb.books || []).find(b => b.id === loan.book_id);
-      if (book) {
-        book.available_stock = (book.available_stock || 0) + 1;
-        book.borrowed_count = Math.max(0, (book.borrowed_count || 1) - 1);
-      }
-
-      saveLocalDb(localDb);
-      return res.json({ success: true, message: 'Buku berhasil dikembalikan (Lokal)!' });
+    const loanRes = await dbQuery('SELECT * FROM loans WHERE id = $1', [id]);
+    if (loanRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Peminjaman tidak ditemukan.' });
     }
+
+    const loan = loanRes.rows[0];
+    if (loan.return_date) {
+      return res.status(400).json({ error: 'Buku ini sudah tercatat telah dikembalikan.' });
+    }
+
+    // 1. Update status peminjaman menjadi RETURNED
+    await dbQuery(`
+      UPDATE loans 
+      SET return_date = CURRENT_DATE,
+          status = 'RETURNED'
+      WHERE id = $1
+    `, [id]);
+
+    // 2. Kembalikan stok buku
+    await dbQuery(`
+      UPDATE books 
+      SET available_stock = available_stock + 1,
+          borrowed_count = GREATEST(0, borrowed_count - 1)
+      WHERE id = $1
+    `, [loan.book_id]);
+
+    return res.json({ success: true, message: 'Buku berhasil dikembalikan! Stok rak telah diperbarui.' });
   } catch (err) {
     console.error('Error return book:', err);
-    res.status(500).json({ error: 'Gagal memproses pengembalian buku.' });
+    res.status(500).json({ error: 'Gagal memproses pengembalian buku.', details: err.message });
   }
 });
 
@@ -1827,7 +1252,7 @@ app.get('/api/settings', async (req, res) => {
     res.json(settings);
   } catch (err) {
     console.error('Error get settings:', err);
-    res.status(500).json({ error: 'Gagal mengambil pengaturan perpustakaan.' });
+    res.status(500).json({ error: 'Gagal mengambil pengaturan perpustakaan.', details: err.message });
   }
 });
 
@@ -1843,7 +1268,7 @@ app.put('/api/settings', async (req, res) => {
     res.json({ success: true, message: 'Pengaturan perpustakaan berhasil disimpan!', settings: updated });
   } catch (err) {
     console.error('Error update settings:', err);
-    res.status(500).json({ error: 'Gagal menyimpan pengaturan.' });
+    res.status(500).json({ error: 'Gagal menyimpan pengaturan.', details: err.message });
   }
 });
 
@@ -1854,7 +1279,7 @@ app.post('/api/settings/reset', async (req, res) => {
     res.json({ success: true, message: 'Pengaturan berhasil dikembalikan ke standar awal!', settings: DEFAULT_SETTINGS });
   } catch (err) {
     console.error('Error reset settings:', err);
-    res.status(500).json({ error: 'Gagal mereset pengaturan.' });
+    res.status(500).json({ error: 'Gagal mereset pengaturan.', details: err.message });
   }
 });
 
@@ -1880,9 +1305,13 @@ app.post('/api/settings/toggle-demo-mode', async (req, res) => {
     });
   } catch (err) {
     console.error('Error toggle demo mode:', err);
-    res.status(500).json({ error: 'Gagal mengubah status Mode Demo.' });
+    res.status(500).json({ error: 'Gagal mengubah status Mode Demo.', details: err.message });
   }
 });
+
+// ==============================================================================
+// 8. STATIC PAGE ROUTES
+// ==============================================================================
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
@@ -1903,6 +1332,7 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n=================================================================`);
   console.log(`🏛️  FINDLIB UNSIKA - Find Your Library (Sistem Rak Pintar IoT)`);
+  console.log(`📡 Single Source of Truth: Neon PostgreSQL Cloud`);
   console.log(`-----------------------------------------------------------------`);
   console.log(`🌐 Portal Publik (Mahasiswa/Umum)  : http://localhost:${PORT}`);
   console.log(`📍 Kiosk On-Site (Di Perpustakaan) : http://localhost:${PORT}/kiosk`);
