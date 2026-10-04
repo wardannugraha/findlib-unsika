@@ -216,24 +216,59 @@ mqttClient.on('offline', () => {
   isMqttConnected = false;
 });
 
-function publishLedEvent(payload) {
-  return new Promise((resolve) => {
-    const payloadString = JSON.stringify(payload);
+async function publishLedEvent(payload) {
+  const payloadString = JSON.stringify(payload);
 
-    if (isMqttConnected) {
-      mqttClient.publish(MQTT_TOPIC, payloadString, { qos: 1 }, (err) => {
+  // Jika client utama terhubung, gunakan client utama
+  if (isMqttConnected && mqttClient && mqttClient.connected) {
+    return new Promise((resolve) => {
+      mqttClient.publish(MQTT_TOPIC, payloadString, { qos: 0 }, (err) => {
         if (err) {
-          console.error('❌ [MQTT] Gagal publish payload:', err);
+          console.error('❌ [MQTT] Gagal publish payload:', err.message);
           resolve({ sent: false, error: err.message, payload });
         } else {
-          console.log(`📡 [MQTT] Payload berhasil dikirim ke topik [${MQTT_TOPIC}]:`, payload);
+          console.log(`📡 [MQTT] Payload berhasil dikirim ke [${MQTT_TOPIC}]:`, payload);
           resolve({ sent: true, payload });
         }
       });
-    } else {
-      console.log(`ℹ️ [MQTT SIMULASI] Broker offline/lokal. Log payload:`, payload);
-      resolve({ sent: false, note: 'Broker offline, pesan disimulasikan lokal', payload });
-    }
+    });
+  }
+
+  // Fallback: On-demand connection (Sangat penting untuk serverless / Vercel & reconnects)
+  return new Promise((resolve) => {
+    console.log('🔄 [MQTT] Menghubungkan on-demand ke broker untuk publish...');
+    const tempClient = mqtt.connect(MQTT_BROKER_URL, {
+      ...mqttOptions,
+      connectTimeout: 5000
+    });
+
+    const timeout = setTimeout(() => {
+      console.warn('⚠️ [MQTT] On-demand publish timeout.');
+      try { tempClient.end(true); } catch (e) { }
+      resolve({ sent: false, note: 'Timeout connecting to MQTT broker', payload });
+    }, 6000);
+
+    tempClient.on('connect', () => {
+      tempClient.publish(MQTT_TOPIC, payloadString, { qos: 0 }, (err) => {
+        clearTimeout(timeout);
+        if (err) {
+          console.error('❌ [MQTT] Gagal publish payload:', err.message);
+          try { tempClient.end(); } catch (e) { }
+          resolve({ sent: false, error: err.message, payload });
+        } else {
+          console.log(`📡 [MQTT ON-DEMAND] Payload sukses dikirim ke [${MQTT_TOPIC}]:`, payload);
+          try { tempClient.end(); } catch (e) { }
+          resolve({ sent: true, payload });
+        }
+      });
+    });
+
+    tempClient.on('error', (err) => {
+      clearTimeout(timeout);
+      console.error('❌ [MQTT] On-demand error:', err.message);
+      try { tempClient.end(true); } catch (e) { }
+      resolve({ sent: false, error: err.message, payload });
+    });
   });
 }
 
