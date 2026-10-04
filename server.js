@@ -189,9 +189,15 @@ const mqttOptions = {
   connectTimeout: 10000,
 };
 
-if (process.env.MQTT_USERNAME && process.env.MQTT_PASSWORD) {
-  mqttOptions.username = process.env.MQTT_USERNAME;
-  mqttOptions.password = process.env.MQTT_PASSWORD;
+if (
+  process.env.MQTT_USERNAME &&
+  process.env.MQTT_PASSWORD &&
+  process.env.MQTT_USERNAME.trim() !== '' &&
+  process.env.MQTT_USERNAME.trim() !== '-' &&
+  process.env.MQTT_USERNAME.trim().toLowerCase() !== 'none'
+) {
+  mqttOptions.username = process.env.MQTT_USERNAME.trim();
+  mqttOptions.password = process.env.MQTT_PASSWORD.trim();
 }
 
 const mqttClient = mqtt.connect(MQTT_BROKER_URL, mqttOptions);

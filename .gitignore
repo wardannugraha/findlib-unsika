@@ -27,3 +27,6 @@ Thumbs.db
 
 # Temporary / Scratch files
 scratch/
+
+# ESP32 Firmware / Arduino Sketch
+esp32_firmware/
