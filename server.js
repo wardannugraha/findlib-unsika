@@ -930,14 +930,16 @@ app.post('/api/locate/:id', async (req, res) => {
 
     const book = result.rows[0];
     const settings = await getAppSettings();
-    const duration = parseInt(settings.led_duration_seconds || process.env.LED_ANIMATION_DURATION || '15', 10);
+    const duration = parseInt(settings.led_duration_seconds || '15', 10);
+    const rStart = book.led_start_index || 1;
+    const rEnd = book.led_end_index || (rStart + 17);
     const mqttPayload = {
       event: 'LOCATE_BOOK',
       book_id: book.id,
       title: book.title,
       rack_level: book.level_number || 1,
       led_target: book.led_slot,
-      led_range: [book.led_start_index || 1, book.led_end_index || 4],
+      led_range: [rStart, rEnd],
       color_hex: book.color_hex || '#22C55E',
       category: book.category_name || 'Umum',
       action: 'HIGHLIGHT',

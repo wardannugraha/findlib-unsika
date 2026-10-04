@@ -1206,9 +1206,117 @@ function onAdminCategoryChange() {
     }
   }
 
+  // Auto-Pilih Blok Rak yang dialokasikan untuk kategori ini
+  const matchingRack = adminRacks.find(r => r.category_id === selCat);
+  if (matchingRack) {
+    const rackSelect = document.getElementById('bookRack');
+    if (rackSelect) rackSelect.value = matchingRack.id;
+  }
+
   if (document.getElementById('formMode').value === 'ADD') {
     generateAutoBookId();
   }
+
+  renderVisualSlotPicker();
+}
+
+function onAdminRackChange() {
+  renderVisualSlotPicker();
+}
+
+function onLedSlotInputChanged() {
+  renderVisualSlotPicker();
+}
+
+function selectVisualSlot(slotNumber) {
+  const slotInput = document.getElementById('bookLedSlot');
+  if (slotInput) {
+    slotInput.value = slotNumber;
+    renderVisualSlotPicker();
+  }
+}
+
+function renderVisualSlotPicker() {
+  const grid = document.getElementById('visualSlotGrid');
+  const zoneInfo = document.getElementById('shelfPickerZoneInfo');
+  const rackSelect = document.getElementById('bookRack');
+  const slotInput = document.getElementById('bookLedSlot');
+  if (!grid || !rackSelect) return;
+
+  const selectedRackId = rackSelect.value;
+  const currentSlotVal = slotInput ? parseInt(slotInput.value, 10) : null;
+  const currentBookId = document.getElementById('bookId') ? document.getElementById('bookId').value.trim() : '';
+
+  const rack = adminRacks.find(r => r.id === selectedRackId);
+  if (!rack) {
+    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #94A3B8; font-size: 0.8rem; padding: 12px;">Pilih Kategori & Blok Rak terlebih dahulu untuk melihat peta slot LED.</div>';
+    if (zoneInfo) zoneInfo.textContent = 'Belum Dipilih';
+    return;
+  }
+
+  const startIdx = rack.led_start_index || 1;
+  const endIdx = rack.led_end_index || (startIdx + 17);
+  const totalSlots = (endIdx - startIdx) + 1;
+
+  if (zoneInfo) {
+    zoneInfo.textContent = `Tingkat ${rack.level_number || 1} (Slot #${startIdx} s/d #${endIdx})`;
+  }
+
+  // Cari buku-buku yang sudah menempati slot di rentang ini
+  const occupiedMap = {};
+  adminBooks.forEach(b => {
+    if (b.id !== currentBookId && b.led_slot >= startIdx && b.led_slot <= endIdx) {
+      occupiedMap[b.led_slot] = b;
+    }
+  });
+
+  let slotsHtml = '';
+  for (let slot = startIdx; slot <= endIdx; slot++) {
+    const isOccupied = !!occupiedMap[slot];
+    const isSelected = (slot === currentSlotVal);
+    const occBook = occupiedMap[slot];
+
+    let bgStyle = '#10B981'; // Hijau Kosong
+    let textColor = '#FFFFFF';
+    let borderColor = 'transparent';
+    let cursorStyle = 'pointer';
+    let titleAttr = `Slot #${slot} (Tersedia / Kosong)`;
+    let extraIcon = '';
+
+    if (isSelected) {
+      bgStyle = '#0284C7'; // Biru Terpilih
+      borderColor = '#0369A1';
+      textColor = '#FFFFFF';
+      titleAttr = `Slot #${slot} (Terpilih untuk buku ini)`;
+      extraIcon = '<i class="fa-solid fa-check" style="font-size: 0.6rem; margin-left: 2px;"></i>';
+    } else if (isOccupied) {
+      bgStyle = '#64748B'; // Abu-abu Terisi
+      textColor = '#F8FAFC';
+      titleAttr = `Slot #${slot}: Terisi "${occBook.title}" [${occBook.id}]`;
+    }
+
+    slotsHtml += `
+      <button type="button" 
+        class="visual-slot-btn" 
+        title="${titleAttr}" 
+        onclick="selectVisualSlot(${slot})"
+        style="
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          padding: 6px 2px; border-radius: 8px; font-size: 0.75rem; font-weight: 700;
+          background: ${bgStyle}; color: ${textColor}; border: 1.5px solid ${borderColor};
+          cursor: ${cursorStyle}; transition: all 0.2s ease; user-select: none;
+          box-shadow: ${isSelected ? '0 0 0 2px rgba(2, 132, 199, 0.4)' : 'none'};
+        "
+        onmouseover="this.style.transform='scale(1.05)'"
+        onmouseout="this.style.transform='scale(1)'"
+      >
+        <span>#${slot}</span>
+        ${extraIcon}
+      </button>
+    `;
+  }
+
+  grid.innerHTML = slotsHtml;
 }
 
 function openProdiDropdown() {

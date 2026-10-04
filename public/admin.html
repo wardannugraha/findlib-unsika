@@ -780,8 +780,9 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Penempatan Rak *</label>
-              <select id="bookRack" class="form-control" required>
+              <label class="form-label">Penempatan Blok Rak *</label>
+              <select id="bookRack" class="form-control" required
+                onchange="onAdminRackChange()">
                 <!-- Diisi via JS -->
               </select>
             </div>
@@ -809,12 +810,35 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Titik Spesifik LED WS2812B (Slot) *</label>
-              <input type="number" id="bookLedSlot" class="form-control" min="1" max="100" placeholder="Nomor LED"
-                required>
+              <input type="number" id="bookLedSlot" class="form-control" min="1" max="108" placeholder="Nomor Slot LED (1 - 108)"
+                required oninput="onLedSlotInputChanged()">
             </div>
             <div class="form-group">
               <label class="form-label">Jumlah Stok Buku (Unit) *</label>
               <input type="number" id="bookStock" class="form-control" min="1" value="1" required>
+            </div>
+          </div>
+
+          <!-- VISUAL SHELF / SLOT PICKER -->
+          <div class="form-group" id="visualSlotPickerGroup" style="background: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 12px; padding: 14px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <label style="font-size: 0.85rem; font-weight: 700; color: #1E293B; margin: 0; display: flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-layer-group" style="color: #0284C7;"></i> Peta Visual Slot Blok Rak:
+              </label>
+              <span id="shelfPickerZoneInfo" style="font-size: 0.75rem; font-weight: 600; color: #0284C7; background: #E0F2FE; padding: 3px 9px; border-radius: 6px;">
+                Slot 1 - 18
+              </span>
+            </div>
+            <p style="font-size: 0.75rem; color: #64748B; margin-bottom: 10px; line-height: 1.4;">
+              Klik salah satu kotak slot hijau di bawah untuk memilih nomor lampu LED buku secara otomatis:
+            </p>
+            <div id="visualSlotGrid" style="display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; margin-bottom: 10px;">
+              <!-- Diisi secara dinamis via JS -->
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.72rem; color: #64748B; padding-top: 6px; border-top: 1px solid #E2E8F0;">
+              <span style="display: inline-flex; align-items: center; gap: 5px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #10B981; display: inline-block;"></span> <strong>Hijau:</strong> Kosong (Tersedia)</span>
+              <span style="display: inline-flex; align-items: center; gap: 5px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #64748B; display: inline-block;"></span> <strong>Abu-abu:</strong> Terisi Buku Lain</span>
+              <span style="display: inline-flex; align-items: center; gap: 5px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #0284C7; border: 1.5px solid #0369A1; display: inline-block;"></span> <strong>Biru:</strong> Terpilih Saat Ini</span>
             </div>
           </div>
 
