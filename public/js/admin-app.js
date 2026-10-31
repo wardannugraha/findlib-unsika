@@ -996,8 +996,8 @@ async function loadAdminRacks() {
 
     const select = document.getElementById('bookRack');
     if (select) {
-      select.innerHTML = '<option value="">-- Pilih Rak & Tingkat --</option>' + 
-        adminRacks.map(r => `<option value="${r.id}">${r.rack_name} (Tingkat ${r.level_number})</option>`).join('');
+      select.innerHTML = '<option value="">-- Pilih Blok Rak Fisik --</option>' + 
+        adminRacks.map(r => `<option value="${r.id}">${r.rack_name}</option>`).join('');
     }
   } catch (err) {
     console.error('Error load racks:', err);
@@ -1206,13 +1206,6 @@ function onAdminCategoryChange() {
     }
   }
 
-  // Auto-Pilih Blok Rak yang dialokasikan untuk kategori ini
-  const matchingRack = adminRacks.find(r => r.category_id === selCat);
-  if (matchingRack) {
-    const rackSelect = document.getElementById('bookRack');
-    if (rackSelect) rackSelect.value = matchingRack.id;
-  }
-
   if (document.getElementById('formMode').value === 'ADD') {
     generateAutoBookId();
   }
@@ -1225,6 +1218,17 @@ function onAdminRackChange() {
 }
 
 function onLedSlotInputChanged() {
+  const slotInput = document.getElementById('bookLedSlot');
+  const rackSelect = document.getElementById('bookRack');
+  if (slotInput && rackSelect) {
+    const val = parseInt(slotInput.value, 10);
+    if (!isNaN(val) && val >= 1 && val <= 108) {
+      const matchingRack = adminRacks.find(r => val >= r.led_start_index && val <= r.led_end_index);
+      if (matchingRack && rackSelect.value !== matchingRack.id) {
+        rackSelect.value = matchingRack.id;
+      }
+    }
+  }
   renderVisualSlotPicker();
 }
 
@@ -1243,13 +1247,23 @@ function renderVisualSlotPicker() {
   const slotInput = document.getElementById('bookLedSlot');
   if (!grid || !rackSelect) return;
 
-  const selectedRackId = rackSelect.value;
   const currentSlotVal = slotInput ? parseInt(slotInput.value, 10) : null;
   const currentBookId = document.getElementById('bookId') ? document.getElementById('bookId').value.trim() : '';
 
-  const rack = adminRacks.find(r => r.id === selectedRackId);
+  let selectedRackId = rackSelect.value;
+  let rack = adminRacks.find(r => r.id === selectedRackId);
+
+  // Jika belum pilih blok tapi sudah ada nomor slot, otomatis pilihkan blok yang sesuai
+  if (!rack && currentSlotVal && currentSlotVal >= 1 && currentSlotVal <= 108) {
+    rack = adminRacks.find(r => currentSlotVal >= r.led_start_index && currentSlotVal <= r.led_end_index);
+    if (rack) {
+      rackSelect.value = rack.id;
+      selectedRackId = rack.id;
+    }
+  }
+
   if (!rack) {
-    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #94A3B8; font-size: 0.8rem; padding: 12px;">Pilih Kategori & Blok Rak terlebih dahulu untuk melihat peta slot LED.</div>';
+    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #94A3B8; font-size: 0.8rem; padding: 12px;">Pilih Blok Rak fisik atau ketik nomor slot (1-108) untuk melihat peta slot LED.</div>';
     if (zoneInfo) zoneInfo.textContent = 'Belum Dipilih';
     return;
   }
@@ -1259,7 +1273,8 @@ function renderVisualSlotPicker() {
   const totalSlots = (endIdx - startIdx) + 1;
 
   if (zoneInfo) {
-    zoneInfo.textContent = `Tingkat ${rack.level_number || 1} (Slot #${startIdx} s/d #${endIdx})`;
+    const rackColor = rack.color_hex || '#22C55E';
+    zoneInfo.innerHTML = `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${rackColor}; margin-right:6px; vertical-align:middle;"></span> ${rack.rack_name}`;
   }
 
   // Cari buku-buku yang sudah menempati slot di rentang ini
@@ -1758,11 +1773,19 @@ function setCategoryColor(hex) {
   document.getElementById('catColorPicker').value = hex;
 }
 
-// Modal Kategori
+// Modal Kategori (Kelola, Tambah & Edit)
 function openCategoryModal() {
-  document.getElementById('categoryForm').reset();
-  setCategoryColor('#0284C7');
+  cancelCategoryEdit();
+  renderExistingCategoriesList();
+  document.getElementById('categoryModal').classList.add('open');
+}
 
+function closeCategoryModal() {
+  document.getElementById('categoryModal').classList.remove('open');
+  cancelCategoryEdit();
+}
+
+function renderExistingCategoriesList() {
   const countBadge = document.getElementById('existingCatCount');
   if (countBadge) countBadge.textContent = `${adminCategories.length} Kategori`;
 
@@ -1776,27 +1799,99 @@ function openCategoryModal() {
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="width: 12px; height: 12px; border-radius: 50%; background-color: ${c.color_hex || '#0284C7'}; display: inline-block; flex-shrink: 0; box-shadow: 0 0 4px ${c.color_hex || '#0284C7'};"></span>
             <div>
-              <div style="font-weight: 700; color: #0F172A; font-size: 0.84rem;">${c.name}</div>
-              ${c.description ? `<div style="font-size: 0.72rem; color: #64748B;">${c.description}</div>` : ''}
+              <div style="font-weight: 700; color: #0F172A; font-size: 0.84rem;">${escapeHtml(c.name)}</div>
+              ${c.description ? `<div style="font-size: 0.72rem; color: #64748B;">${escapeHtml(c.description)}</div>` : ''}
             </div>
           </div>
-          <span class="table-badge-category" style="background-color: ${c.color_hex || '#0284C7'}; padding: 3px 10px; font-size: 0.72rem; border-radius: 6px;">
-            ${c.id}
-          </span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="table-badge-category" style="background-color: ${c.color_hex || '#0284C7'}; padding: 3px 8px; font-size: 0.7rem; border-radius: 6px;">
+              ${c.id}
+            </span>
+            <button type="button" class="btn-table-action" title="Edit Kategori ini" onclick="editCategory('${c.id}')" style="background: #EFF6FF; border: 1px solid #BFDBFE; color: #1D4ED8; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; transition: all 0.2s;">
+              <i class="fa-solid fa-pen"></i> Edit
+            </button>
+          </div>
         </div>
       `).join('');
     }
   }
-
-  document.getElementById('categoryModal').classList.add('open');
 }
 
-function closeCategoryModal() {
-  document.getElementById('categoryModal').classList.remove('open');
+function editCategory(catId) {
+  const cat = adminCategories.find(c => c.id === catId);
+  if (!cat) return;
+
+  document.getElementById('catFormMode').value = 'EDIT';
+  const catIdInput = document.getElementById('catId');
+  catIdInput.value = cat.id;
+  catIdInput.readOnly = true;
+  catIdInput.style.backgroundColor = '#F1F5F9';
+  catIdInput.style.cursor = 'not-allowed';
+
+  document.getElementById('catName').value = cat.name || '';
+  setCategoryColor(cat.color_hex || '#0284C7');
+  document.getElementById('catDesc').value = cat.description || '';
+
+  const modalTitle = document.getElementById('catModalTitle');
+  if (modalTitle) {
+    modalTitle.innerHTML = `<i class="fa-solid fa-pen-to-square" style="color: #F59E0B;"></i> Edit Kategori`;
+  }
+
+  const modalSub = document.getElementById('catModalSubtitle');
+  if (modalSub) {
+    modalSub.textContent = `Mengubah data untuk [${cat.id}]`;
+  }
+
+  const submitBtn = document.getElementById('catSubmitBtn');
+  if (submitBtn) {
+    submitBtn.innerHTML = `<i class="fa-solid fa-check"></i> Simpan Perubahan`;
+  }
+
+  const cancelBtn = document.getElementById('catCancelEditBtn');
+  if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+
+  const modalBody = document.querySelector('#categoryModal .modal-body');
+  if (modalBody) modalBody.scrollTop = 0;
+}
+
+function cancelCategoryEdit() {
+  const form = document.getElementById('categoryForm');
+  if (form) form.reset();
+  
+  const modeInput = document.getElementById('catFormMode');
+  if (modeInput) modeInput.value = 'ADD';
+
+  const catIdInput = document.getElementById('catId');
+  if (catIdInput) {
+    catIdInput.readOnly = false;
+    catIdInput.style.backgroundColor = '';
+    catIdInput.style.cursor = '';
+  }
+
+  setCategoryColor('#0284C7');
+
+  const modalTitle = document.getElementById('catModalTitle');
+  if (modalTitle) {
+    modalTitle.innerHTML = `<i class="fa-solid fa-tags" style="color: #0284C7;"></i> Kelola Kategori Buku`;
+  }
+
+  const modalSub = document.getElementById('catModalSubtitle');
+  if (modalSub) {
+    modalSub.textContent = 'Atur klasifikasi buku dan warna label badge di web';
+  }
+
+  const submitBtn = document.getElementById('catSubmitBtn');
+  if (submitBtn) {
+    submitBtn.innerHTML = `<i class="fa-solid fa-plus"></i> Simpan Kategori Baru`;
+  }
+
+  const cancelBtn = document.getElementById('catCancelEditBtn');
+  if (cancelBtn) cancelBtn.style.display = 'none';
 }
 
 async function handleSaveCategory(e) {
   e.preventDefault();
+  const mode = document.getElementById('catFormMode').value;
   const payload = {
     id: document.getElementById('catId').value.trim(),
     name: document.getElementById('catName').value.trim(),
@@ -1805,8 +1900,16 @@ async function handleSaveCategory(e) {
   };
 
   try {
-    const res = await fetch('/api/categories', {
-      method: 'POST',
+    let url = '/api/categories';
+    let method = 'POST';
+
+    if (mode === 'EDIT') {
+      url = `/api/categories/${encodeURIComponent(payload.id)}`;
+      method = 'PUT';
+    }
+
+    const res = await fetch(url, {
+      method: method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
@@ -1814,16 +1917,18 @@ async function handleSaveCategory(e) {
     const result = await res.json();
     if (!res.ok) {
       showModalAlert({
-        title: 'Gagal Menyimpan Kategori',
+        title: mode === 'EDIT' ? 'Gagal Memperbarui Kategori' : 'Gagal Menyimpan Kategori',
         text: result.error || 'Gagal menyimpan kategori.',
         icon: 'error'
       });
       return;
     }
 
-    notifyToast('success', 'Kategori baru berhasil disimpan!');
-    closeCategoryModal();
-    loadAdminCategories();
+    notifyToast('success', mode === 'EDIT' ? 'Kategori berhasil diperbarui!' : 'Kategori baru berhasil disimpan!');
+    cancelCategoryEdit();
+    await loadAdminCategories();
+    renderExistingCategoriesList();
+    loadAdminBooks();
   } catch (err) {
     console.error('Error save category:', err);
     showModalAlert({

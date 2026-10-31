@@ -132,48 +132,50 @@
           </button>
         </div>
 
-        <!-- RACK CONTAINER (3 TIERS) -->
+        <!-- RACK CONTAINER (2 TIERS x 3 BLOCKS = 108 LED) -->
         <div class="rack-container" id="virtualRackContainer">
 
-          <!-- TIER 3 (ATAS) -->
-          <div class="rack-tier" id="tier-3">
+          <!-- TIER 2 (ATAS: Slot 55 - 108) -->
+          <div class="rack-tier" id="tier-2" style="margin-bottom: 12px;">
             <div class="tier-header">
-              <strong style="color: #60A5FA;">Tingkat 3 (Atas)</strong>
-              <span>Zona Skripsi & TA (LED 9-12)</span>
+              <strong style="color: #38BDF8;"><i class="fa-solid fa-layer-group"></i> Tingkat 2 (Atas)</strong>
+              <span>54 LED (Slot 55-108)</span>
             </div>
-            <div class="tier-slots">
-              <div class="led-node" id="led-node-9">#9</div>
-              <div class="led-node" id="led-node-10">#10</div>
-              <div class="led-node" id="led-node-11">#11</div>
-              <div class="led-node" id="led-node-12">#12</div>
+            <div class="tier-blocks-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+              <div class="rack-block-node" id="block-RAK-T2-B1" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(212, 255, 0, 0.4); border-radius: 8px; padding: 8px 4px; text-align: center; transition: all 0.3s ease;">
+                <div style="font-size: 0.68rem; color: #D4FF00; font-weight: 700;">Blok Kiri</div>
+                <div style="font-size: 0.72rem; color: #CBD5E1; font-weight: 600;">#55 - 72</div>
+              </div>
+              <div class="rack-block-node" id="block-RAK-T2-B2" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 8px; padding: 8px 4px; text-align: center; transition: all 0.3s ease;">
+                <div style="font-size: 0.68rem; color: #C084FC; font-weight: 700;">Blok Tengah</div>
+                <div style="font-size: 0.72rem; color: #CBD5E1; font-weight: 600;">#73 - 90</div>
+              </div>
+              <div class="rack-block-node" id="block-RAK-T2-B3" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(249, 115, 22, 0.4); border-radius: 8px; padding: 8px 4px; text-align: center; transition: all 0.3s ease;">
+                <div style="font-size: 0.68rem; color: #FB923C; font-weight: 700;">Blok Kanan</div>
+                <div style="font-size: 0.72rem; color: #CBD5E1; font-weight: 600;">#91 - 108</div>
+              </div>
             </div>
           </div>
 
-          <!-- TIER 2 (TENGAH) -->
-          <div class="rack-tier" id="tier-2">
-            <div class="tier-header">
-              <strong style="color: #FBBF24;">Tingkat 2 (Tengah)</strong>
-              <span>Zona Teknologi & Sains (LED 5-8)</span>
-            </div>
-            <div class="tier-slots">
-              <div class="led-node" id="led-node-5">#5</div>
-              <div class="led-node" id="led-node-6">#6</div>
-              <div class="led-node" id="led-node-7">#7</div>
-              <div class="led-node" id="led-node-8">#8</div>
-            </div>
-          </div>
-
-          <!-- TIER 1 (BAWAH) -->
+          <!-- TIER 1 (BAWAH: Slot 1 - 54) -->
           <div class="rack-tier" id="tier-1">
             <div class="tier-header">
-              <strong style="color: #4ADE80;">Tingkat 1 (Bawah)</strong>
-              <span>Zona Fiksi & Sastra (LED 1-4)</span>
+              <strong style="color: #4ADE80;"><i class="fa-solid fa-layer-group"></i> Tingkat 1 (Bawah)</strong>
+              <span>54 LED (Slot 1-54)</span>
             </div>
-            <div class="tier-slots">
-              <div class="led-node" id="led-node-1">#1</div>
-              <div class="led-node" id="led-node-2">#2</div>
-              <div class="led-node" id="led-node-3">#3</div>
-              <div class="led-node" id="led-node-4">#4</div>
+            <div class="tier-blocks-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+              <div class="rack-block-node" id="block-RAK-T1-B1" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(34, 197, 94, 0.4); border-radius: 8px; padding: 8px 4px; text-align: center; transition: all 0.3s ease;">
+                <div style="font-size: 0.68rem; color: #4ADE80; font-weight: 700;">Blok Kiri</div>
+                <div style="font-size: 0.72rem; color: #CBD5E1; font-weight: 600;">#1 - 18</div>
+              </div>
+              <div class="rack-block-node" id="block-RAK-T1-B2" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 8px; padding: 8px 4px; text-align: center; transition: all 0.3s ease;">
+                <div style="font-size: 0.68rem; color: #FACC15; font-weight: 700;">Blok Tengah</div>
+                <div style="font-size: 0.72rem; color: #CBD5E1; font-weight: 600;">#19 - 36</div>
+              </div>
+              <div class="rack-block-node" id="block-RAK-T1-B3" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px; padding: 8px 4px; text-align: center; transition: all 0.3s ease;">
+                <div style="font-size: 0.68rem; color: #60A5FA; font-weight: 700;">Blok Kanan</div>
+                <div style="font-size: 0.72rem; color: #CBD5E1; font-weight: 600;">#37 - 54</div>
+              </div>
             </div>
           </div>
 

@@ -183,6 +183,25 @@ const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com
 const MQTT_TOPIC = process.env.MQTT_TOPIC || 'libnav/unsika/rak/led';
 let isMqttConnected = false;
 
+// Helper: Menentukan Blok Rak Fisik & Warna berdasarkan nomor slot LED (108 LED: 2 Tingkat x 3 Blok = 6 Blok @ 18 LED)
+function getRackBlockForSlot(slot) {
+  const s = parseInt(slot, 10) || 1;
+  if (s >= 1 && s <= 18) {
+    return { rack_id: 'RAK-T1-B1', rack_name: 'Tingkat 1 - Blok Kiri (Slot 1-18)', level_number: 1, led_start_index: 1, led_end_index: 18, color_hex: '#22C55E' };
+  } else if (s >= 19 && s <= 36) {
+    return { rack_id: 'RAK-T1-B2', rack_name: 'Tingkat 1 - Blok Tengah (Slot 19-36)', level_number: 1, led_start_index: 19, led_end_index: 36, color_hex: '#EAB308' };
+  } else if (s >= 37 && s <= 54) {
+    return { rack_id: 'RAK-T1-B3', rack_name: 'Tingkat 1 - Blok Kanan (Slot 37-54)', level_number: 1, led_start_index: 37, led_end_index: 54, color_hex: '#3B82F6' };
+  } else if (s >= 55 && s <= 72) {
+    return { rack_id: 'RAK-T2-B1', rack_name: 'Tingkat 2 - Blok Kiri (Slot 55-72)', level_number: 2, led_start_index: 55, led_end_index: 72, color_hex: '#D4FF00' };
+  } else if (s >= 73 && s <= 90) {
+    return { rack_id: 'RAK-T2-B2', rack_name: 'Tingkat 2 - Blok Tengah (Slot 73-90)', level_number: 2, led_start_index: 73, led_end_index: 90, color_hex: '#A855F7' };
+  } else if (s >= 91 && s <= 108) {
+    return { rack_id: 'RAK-T2-B3', rack_name: 'Tingkat 2 - Blok Kanan (Slot 91-108)', level_number: 2, led_start_index: 91, led_end_index: 108, color_hex: '#F97316' };
+  }
+  return { rack_id: 'RAK-T1-B1', rack_name: 'Tingkat 1 - Blok Kiri (Slot 1-18)', level_number: 1, led_start_index: 1, led_end_index: 18, color_hex: '#22C55E' };
+}
+
 const mqttOptions = {
   port: parseInt(process.env.MQTT_PORT || '1883', 10),
   reconnectPeriod: 5000,
@@ -421,12 +440,47 @@ app.post('/api/categories', async (req, res) => {
       ON CONFLICT (id) DO UPDATE 
       SET name = EXCLUDED.name, color_hex = EXCLUDED.color_hex, description = EXCLUDED.description
       RETURNING *
-    `, [id, name, color_hex, description || '']);
+    `, [id.trim().toUpperCase(), name.trim(), color_hex.trim(), description ? description.trim() : '']);
 
     return res.status(201).json({ success: true, category: result.rows[0] });
   } catch (err) {
     console.error('Error create category:', err.message);
     res.status(500).json({ error: 'Gagal menambah kategori', details: err.message });
+  }
+});
+
+// Edit Kategori
+app.put('/api/categories/:id', async (req, res) => {
+  try {
+    const catId = req.params.id;
+    const { name, color_hex, description } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Nama Kategori wajib diisi!' });
+    }
+
+    const result = await dbQuery(`
+      UPDATE categories
+      SET name = $1, 
+          color_hex = COALESCE($2, color_hex), 
+          description = $3
+      WHERE id = $4
+      RETURNING *
+    `, [
+      name.trim(), 
+      color_hex ? color_hex.trim() : null, 
+      description ? description.trim() : '', 
+      catId
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: `Kategori [${catId}] tidak ditemukan.` });
+    }
+
+    return res.json({ success: true, message: 'Kategori berhasil diperbarui', category: result.rows[0] });
+  } catch (err) {
+    console.error('Error update category:', err.message);
+    res.status(500).json({ error: 'Gagal memperbarui kategori', details: err.message });
   }
 });
 
@@ -467,14 +521,13 @@ app.post('/api/prodi', async (req, res) => {
   }
 });
 
-// Ambil Rak
+// Ambil Rak (6 Blok Fisik dengan Warna Default Masing-Masing)
 app.get('/api/racks', async (req, res) => {
   try {
     const result = await dbQuery(`
-      SELECT r.*, c.name as category_name, c.color_hex
+      SELECT r.*, COALESCE(r.color_hex, '#22C55E') as color_hex
       FROM racks r
-      LEFT JOIN categories c ON r.category_id = c.id
-      ORDER BY r.level_number ASC
+      ORDER BY r.level_number ASC, r.led_start_index ASC
     `);
     return res.json(result.rows);
   } catch (err) {
@@ -666,9 +719,12 @@ app.post('/api/books', async (req, res) => {
       is_demo, cover_url, cover_public_id, total_stock, available_stock
     } = req.body;
 
-    if (!id || !title || !author || !category_id || !rack_id || !led_slot) {
+    const slotNum = parseInt(led_slot, 10);
+    const finalRackId = (rack_id && rack_id.trim().length > 0) ? rack_id : getRackBlockForSlot(slotNum).rack_id;
+
+    if (!id || !title || !author || !category_id || !slotNum) {
       return res.status(400).json({
-        error: 'Mohon lengkapi data wajib: ID/Barcode, Judul, Penulis, Kategori, Rak, dan Titik LED.'
+        error: 'Mohon lengkapi data wajib: ID/Barcode, Judul, Penulis, Kategori, dan Titik LED.'
       });
     }
 
@@ -699,7 +755,7 @@ app.post('/api/books', async (req, res) => {
       id, isbn || null, title, author, publisher || null,
       publish_year ? parseInt(publish_year, 10) : null,
       page_count ? parseInt(page_count, 10) : null,
-      synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
+      synopsis || '', category_id, prodiVal, finalRackId, slotNum,
       isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus
     ]);
 
@@ -738,6 +794,9 @@ app.put('/api/books/:id', async (req, res) => {
     const isDemoBool = is_demo === true || is_demo === 'true';
     const prodiVal = prodi && prodi.trim().length > 0 ? prodi.trim() : null;
 
+    const slotNum = parseInt(led_slot, 10);
+    const finalRackId = (rack_id && rack_id.trim().length > 0) ? rack_id : getRackBlockForSlot(slotNum).rack_id;
+
     // Ambil public_id lama untuk pembersihan jika cover diganti
     const oldBookRes = await dbQuery('SELECT cover_public_id FROM books WHERE id = $1', [bookId]);
     const oldPublicId = oldBookRes.rows.length > 0 ? oldBookRes.rows[0].cover_public_id : null;
@@ -755,7 +814,7 @@ app.put('/api/books/:id', async (req, res) => {
       isbn || null, title, author, publisher || null,
       publish_year ? parseInt(publish_year, 10) : null,
       page_count ? parseInt(page_count, 10) : null,
-      synopsis || '', category_id, prodiVal, rack_id, parseInt(led_slot, 10),
+      synopsis || '', category_id, prodiVal, finalRackId, slotNum,
       isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus,
       bookId
     ]);
@@ -911,13 +970,13 @@ app.delete('/api/organization/:id', async (req, res) => {
   }
 });
 
-// Trigger Sinyal Lampu Rak LED
-app.post('/api/locate/:id', async (req, res) => {
+// Trigger Sinyal Lampu Rak LED (Kiosk & Admin)
+async function handleLocateBook(req, res) {
   try {
     const bookId = req.params.id;
     const result = await dbQuery(`
-      SELECT b.*, c.name as category_name, c.color_hex, 
-             r.rack_name, r.level_number, r.led_start_index, r.led_end_index
+      SELECT b.*, c.name as category_name, 
+             r.rack_name, r.level_number, r.led_start_index, r.led_end_index, r.color_hex as rack_color_hex
       FROM books b
       LEFT JOIN categories c ON b.category_id = c.id
       LEFT JOIN racks r ON b.rack_id = r.id
@@ -931,16 +990,23 @@ app.post('/api/locate/:id', async (req, res) => {
     const book = result.rows[0];
     const settings = await getAppSettings();
     const duration = parseInt(settings.led_duration_seconds || '15', 10);
-    const rStart = book.led_start_index || 1;
-    const rEnd = book.led_end_index || (rStart + 17);
+    
+    // Alokasi blok fisik & warna secara dinamis berdasarkan slot LED
+    const slotBlock = getRackBlockForSlot(book.led_slot);
+    const rLevel = slotBlock.level_number || book.level_number || 1;
+    const rStart = slotBlock.led_start_index || book.led_start_index || 1;
+    const rEnd = slotBlock.led_end_index || book.led_end_index || (rStart + 17);
+    const rColor = slotBlock.color_hex || book.rack_color_hex || '#22C55E';
+    const rackName = slotBlock.rack_name || book.rack_name || 'Rak Pintar';
+
     const mqttPayload = {
       event: 'LOCATE_BOOK',
       book_id: book.id,
       title: book.title,
-      rack_level: book.level_number || 1,
+      rack_level: rLevel,
       led_target: book.led_slot,
       led_range: [rStart, rEnd],
-      color_hex: book.color_hex || '#22C55E',
+      color_hex: rColor, // Warna fisik blok rak (Slot-based)
       category: book.category_name || 'Umum',
       action: 'HIGHLIGHT',
       duration_seconds: duration,
@@ -951,8 +1017,20 @@ app.post('/api/locate/:id', async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Navigasi LED diaktifkan untuk "${book.title}" (Tingkat ${book.level_number}, Slot #${book.led_slot})`,
-      book,
+      message: `Navigasi LED diaktifkan untuk "${book.title}" (${rackName}, Slot #${book.led_slot})`,
+      book: {
+        ...book,
+        level_number: rLevel,
+        rack_name: rackName,
+        color_hex: rColor
+      },
+      data: {
+        ...book,
+        level_number: rLevel,
+        rack_name: rackName,
+        led_target: book.led_slot,
+        color_hex: rColor
+      },
       mqtt: mqttResult,
       payload: mqttPayload
     });
@@ -960,7 +1038,10 @@ app.post('/api/locate/:id', async (req, res) => {
     console.error('Error saat melacak buku:', err);
     res.status(500).json({ error: 'Gagal mengirim sinyal navigasi', details: err.message });
   }
-});
+}
+
+app.post('/api/locate/:id', handleLocateBook);
+app.post('/api/books/:id/locate', handleLocateBook);
 
 // ==============================================================================
 // 5. REST API: ANGGOTA MAHASISWA (MEMBERS)

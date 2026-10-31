@@ -14,14 +14,15 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. TABEL RAK & ZONING LED
+-- 2. TABEL RAK & ZONING LED (6 Blok Fisik @ 18 LED = 108 LED)
 CREATE TABLE IF NOT EXISTS racks (
-    id VARCHAR(50) PRIMARY KEY,           -- ID Rak (contoh: 'RAK-01-T1')
-    rack_name VARCHAR(100) NOT NULL,      -- Nama Rak (contoh: 'Rak A - Tingkat 1 (Bawah)')
-    level_number INT NOT NULL,            -- Tingkat Rak (1, 2, 3, dst.)
-    led_start_index INT NOT NULL,         -- Titik awal LED di tingkat ini
-    led_end_index INT NOT NULL,           -- Titik akhir LED di tingkat ini
-    category_id VARCHAR(50) REFERENCES categories(id) ON DELETE SET NULL,
+    id VARCHAR(50) PRIMARY KEY,           -- ID Rak (contoh: 'RAK-T1-B1')
+    rack_name VARCHAR(100) NOT NULL,      -- Nama Rak (contoh: 'Tingkat 1 - Blok Kiri (Slot 1-18)')
+    level_number INT NOT NULL,            -- Tingkat Rak (1 atau 2)
+    led_start_index INT NOT NULL,         -- Titik awal LED di blok ini
+    led_end_index INT NOT NULL,           -- Titik akhir LED di blok ini
+    color_hex VARCHAR(10),                -- Warna lampu khas blok fisik rak
+    category_id VARCHAR(50) REFERENCES categories(id) ON DELETE SET NULL, -- Opsional / Dekopel
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

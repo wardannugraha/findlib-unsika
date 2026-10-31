@@ -778,29 +778,46 @@ async function triggerLocateBook(bookId) {
 
     // Jalankan Animasi 2-Tahap pada Virtual Rack
     const targetTierId = `tier-${payload.rack_level}`;
-    const targetNodeId = `led-node-${payload.led_target}`;
     const tierElem = document.getElementById(targetTierId);
-    const nodeElem = document.getElementById(targetNodeId);
 
     const statusBox = document.getElementById('activeStatusBox');
     const bookNameText = document.getElementById('activeBookName');
     const timerText = document.getElementById('countdownTimer');
 
     if (statusBox) statusBox.style.display = 'block';
-    if (bookNameText) bookNameText.textContent = `"${book.title}" (Tingkat ${book.level_number}, Slot #${book.led_slot})`;
+    if (bookNameText) {
+      bookNameText.innerHTML = `
+        <div style="font-weight: 700; color: #FFFFFF; font-size: 0.95rem; line-height: 1.3;">"${book.title}"</div>
+        <div style="margin-top: 5px; font-size: 0.82rem; color: ${payload.color_hex}; font-weight: 700;">
+          <i class="fa-solid fa-location-dot"></i> ${book.rack_name || 'Rak Pintar'} &bull; <span style="background: rgba(255,255,255,0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid ${payload.color_hex};">Slot LED #${payload.led_target}</span>
+        </div>
+      `;
+    }
 
-    // Tahap 1: Highlight Baris / Zona
+    // Tahap 1: Highlight Baris / Zona Tingkat
     if (tierElem) {
       tierElem.classList.add('tier-highlighted');
       tierElem.style.borderColor = payload.color_hex;
     }
 
-    // Tahap 2: Sorot Titik Presisi (Target LED Berkedip)
-    if (nodeElem) {
-      nodeElem.classList.add('active-target');
-      nodeElem.style.backgroundColor = payload.color_hex;
-      nodeElem.style.borderColor = '#FFFFFF';
-      nodeElem.style.boxShadow = `0 0 16px ${payload.color_hex}`;
+    // Tahap 2: Sorot Blok Rak Spesifik
+    const slot = payload.led_target;
+    let blockId = '';
+    if (slot >= 1 && slot <= 18) blockId = 'block-RAK-T1-B1';
+    else if (slot >= 19 && slot <= 36) blockId = 'block-RAK-T1-B2';
+    else if (slot >= 37 && slot <= 54) blockId = 'block-RAK-T1-B3';
+    else if (slot >= 55 && slot <= 72) blockId = 'block-RAK-T2-B1';
+    else if (slot >= 73 && slot <= 90) blockId = 'block-RAK-T2-B2';
+    else if (slot >= 91 && slot <= 108) blockId = 'block-RAK-T2-B3';
+
+    if (blockId) {
+      const blockElem = document.getElementById(blockId);
+      if (blockElem) {
+        blockElem.classList.add('active-target');
+        blockElem.style.backgroundColor = payload.color_hex;
+        blockElem.style.color = '#000000';
+        blockElem.style.boxShadow = `0 0 16px ${payload.color_hex}`;
+      }
     }
 
     // Tahap 3: Countdown Timer
@@ -844,6 +861,13 @@ function resetVirtualRack() {
   document.querySelectorAll('.rack-tier').forEach(tier => {
     tier.classList.remove('tier-highlighted');
     tier.style.borderColor = '';
+  });
+
+  document.querySelectorAll('.rack-block-node').forEach(b => {
+    b.classList.remove('active-target');
+    b.style.backgroundColor = '';
+    b.style.color = '';
+    b.style.boxShadow = '';
   });
 
   document.querySelectorAll('.led-node').forEach(node => {

@@ -167,7 +167,7 @@
 
           <div class="admin-action-group">
             <button class="btn-secondary" onclick="openCategoryModal()">
-              <i class="fa-solid fa-tags" style="color: #F59E0B;"></i> Tambah Kategori
+              <i class="fa-solid fa-tags" style="color: #F59E0B;"></i> Kelola Kategori
             </button>
             <button class="btn-primary" onclick="openAddBookModal()">
               <i class="fa-solid fa-plus"></i> Tambah Buku Baru
@@ -1017,23 +1017,24 @@
 
 
   <!-- ======================================================================
-       MODAL 4: TAMBAH KATEGORI & WARNA LED
+       MODAL 4: KELOLA KATEGORI BUKU
        ====================================================================== -->
   <div class="modal-backdrop" id="categoryModal">
     <div class="modal-dialog" style="max-width: 520px;">
       <div class="modal-header">
         <div>
-          <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
-            <i class="fa-solid fa-tags" style="color: #0284C7;"></i> Tambah Kategori & Warna LED
+          <h3 class="modal-title" id="catModalTitle" style="display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-tags" style="color: #0284C7;"></i> Kelola Kategori Buku
           </h3>
-          <span style="font-size: 0.76rem; color: #64748B;">Atur klasifikasi buku dan warna lampu navigasi rak</span>
+          <span id="catModalSubtitle" style="font-size: 0.76rem; color: #64748B;">Atur klasifikasi buku dan warna label badge di web</span>
         </div>
         <button class="modal-close" onclick="closeCategoryModal()">&times;</button>
       </div>
       <div class="modal-body">
         <form id="categoryForm" onsubmit="handleSaveCategory(event)">
+          <input type="hidden" id="catFormMode" value="ADD">
           <div class="form-group">
-            <label class="form-label">ID Kategori (Contoh: CAT-KEDOKTERAN) *</label>
+            <label class="form-label" id="catIdLabel">ID Kategori (Contoh: CAT-KEDOKTERAN) *</label>
             <input type="text" id="catId" class="form-control" required placeholder="CAT-..."
               style="text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;"
               oninput="this.value = this.value.toUpperCase()">
@@ -1043,7 +1044,7 @@
             <input type="text" id="catName" class="form-control" required placeholder="Nama kategori buku">
           </div>
           <div class="form-group">
-            <label class="form-label">Warna Lampu Indikator LED (HEX) *</label>
+            <label class="form-label">Warna Label / Badge di Web (HEX) *</label>
             <div class="color-picker-group">
               <input type="color" id="catColorPicker" class="color-swatch-input" value="#0284C7"
                 onchange="setCategoryColor(this.value)">
@@ -1088,7 +1089,10 @@
 
           <div class="modal-footer" style="margin: 20px -24px -24px -24px;">
             <button type="button" class="btn-secondary" onclick="closeCategoryModal()">Tutup</button>
-            <button type="submit" class="btn-primary">
+            <button type="button" id="catCancelEditBtn" class="btn-secondary" style="display: none;" onclick="cancelCategoryEdit()">
+              <i class="fa-solid fa-xmark"></i> Batal Edit
+            </button>
+            <button type="submit" id="catSubmitBtn" class="btn-primary">
               <i class="fa-solid fa-plus"></i> Simpan Kategori Baru
             </button>
           </div>

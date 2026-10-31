@@ -13,16 +13,16 @@ INSERT INTO categories (id, name, color_hex, description) VALUES
 ON CONFLICT (id) DO UPDATE 
 SET name = EXCLUDED.name, color_hex = EXCLUDED.color_hex, description = EXCLUDED.description;
 
--- 2. Tingkat & Blok Rak (2 Susun x 3 Blok Kategori = 6 Blok, Total 108 LED)
-INSERT INTO racks (id, rack_name, level_number, led_start_index, led_end_index, category_id) VALUES
-('RAK-T1-B1', 'Tingkat 1 - Blok Kiri (Slot 1-18)', 1, 1, 18, 'CAT-FIKSI'),
-('RAK-T1-B2', 'Tingkat 1 - Blok Tengah (Slot 19-36)', 1, 19, 36, 'CAT-NONFIKSI'),
-('RAK-T1-B3', 'Tingkat 1 - Blok Kanan (Slot 37-54)', 1, 37, 54, 'CAT-SKRIPSI'),
-('RAK-T2-B1', 'Tingkat 2 - Blok Kiri (Slot 55-72)', 2, 55, 72, 'CAT-SelfImprovment'),
-('RAK-T2-B2', 'Tingkat 2 - Blok Tengah (Slot 73-90)', 2, 73, 90, 'CAT-SOSIAL'),
-('RAK-T2-B3', 'Tingkat 2 - Blok Kanan (Slot 91-108)', 2, 91, 108, 'CAT-REFERENSI')
+-- 2. Tingkat & Blok Rak (2 Susun x 3 Blok Fisik = 6 Blok, Total 108 LED)
+INSERT INTO racks (id, rack_name, level_number, led_start_index, led_end_index, color_hex, category_id) VALUES
+('RAK-T1-B1', 'Tingkat 1 - Blok Kiri (Slot 1-18)', 1, 1, 18, '#22C55E', NULL),
+('RAK-T1-B2', 'Tingkat 1 - Blok Tengah (Slot 19-36)', 1, 19, 36, '#EAB308', NULL),
+('RAK-T1-B3', 'Tingkat 1 - Blok Kanan (Slot 37-54)', 1, 37, 54, '#3B82F6', NULL),
+('RAK-T2-B1', 'Tingkat 2 - Blok Kiri (Slot 55-72)', 2, 55, 72, '#D4FF00', NULL),
+('RAK-T2-B2', 'Tingkat 2 - Blok Tengah (Slot 73-90)', 2, 73, 90, '#A855F7', NULL),
+('RAK-T2-B3', 'Tingkat 2 - Blok Kanan (Slot 91-108)', 2, 91, 108, '#F97316', NULL)
 ON CONFLICT (id) DO UPDATE
-SET rack_name = EXCLUDED.rack_name, level_number = EXCLUDED.level_number, led_start_index = EXCLUDED.led_start_index, led_end_index = EXCLUDED.led_end_index, category_id = EXCLUDED.category_id;
+SET rack_name = EXCLUDED.rack_name, level_number = EXCLUDED.level_number, led_start_index = EXCLUDED.led_start_index, led_end_index = EXCLUDED.led_end_index, color_hex = EXCLUDED.color_hex, category_id = NULL;
 
 -- 3. Buku Contoh dengan Metadata Lengkap (Kombinasi Buku Demo Rak IoT & Koleksi Umum)
 INSERT INTO books (id, isbn, title, author, publisher, publish_year, page_count, synopsis, category_id, prodi, rack_id, led_slot, is_demo, cover_url, total_stock, available_stock, borrowed_count, status) VALUES
