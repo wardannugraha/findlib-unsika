@@ -648,11 +648,13 @@ function openBookModal(bookId) {
         <i class="fa-solid fa-circle-info" style="color: #0284C7;"></i> Informasi Lokasi Fisik di Perpustakaan:
       </h4>
       <p style="font-size: 0.83rem; color: #475569; line-height: 1.5;">
-        Buku ini ditempatkan di <strong>${escapeHtml(book.rack_name || 'Rak Koleksi Utama')}</strong>.
+        Buku ini ditempatkan di <strong>${escapeHtml(book.rack_name || 'Rak Koleksi Umum')}</strong>${book.led_slot ? ` &bull; <span style="color: #0284C7; font-weight: 700;">Slot LED #${book.led_slot}</span>` : ' (Rak Reguler/Konvensional)'}.
       </p>
-      <p style="font-size: 0.78rem; color: #64748B; margin-top: 6px; font-style: italic;">
-        *Untuk menyalakan lampu indikator navigasi presisi langsung di rak fisik, silakan gunakan terminal Kiosk yang tersedia di lantai perpustakaan UNSIKA.
-      </p>
+      ${book.led_slot ? `
+        <p style="font-size: 0.78rem; color: #64748B; margin-top: 6px; font-style: italic;">
+          *Untuk menyalakan lampu indikator navigasi presisi langsung di rak fisik, silakan gunakan terminal Kiosk yang tersedia di lantai perpustakaan UNSIKA.
+        </p>
+      ` : ''}
     </div>
 
     <div>

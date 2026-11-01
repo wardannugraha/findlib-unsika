@@ -1269,8 +1269,8 @@ function renderVisualSlotPicker() {
   }
 
   if (!rack) {
-    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #94A3B8; font-size: 0.8rem; padding: 12px;">Pilih Blok Rak fisik atau ketik nomor slot (1-108) untuk melihat peta slot LED.</div>';
-    if (zoneInfo) zoneInfo.textContent = 'Belum Dipilih';
+    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #94A3B8; font-size: 0.8rem; padding: 12px;">Pilih Blok Rak fisik atau ketik nomor slot (1-108) untuk melihat peta slot LED.<br><span style="font-size: 0.74rem; color: #0284C7; font-weight: 600;">(Opsional: Kosongkan jika buku berada di rak biasa / non-IoT)</span></div>';
+    if (zoneInfo) zoneInfo.textContent = 'Tanpa Slot IoT (Rak Biasa)';
     return;
   }
 
