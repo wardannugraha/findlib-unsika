@@ -780,8 +780,8 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Penempatan Blok Rak *</label>
-              <select id="bookRack" class="form-control" required
+              <label class="form-label">Penempatan Blok Rak (Opsional)</label>
+              <select id="bookRack" class="form-control"
                 onchange="onAdminRackChange()">
                 <!-- Diisi via JS -->
               </select>
@@ -809,9 +809,12 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">Titik Spesifik LED WS2812B (Slot) *</label>
-              <input type="number" id="bookLedSlot" class="form-control" min="1" max="108" placeholder="Nomor Slot LED (1 - 108)"
-                required oninput="onLedSlotInputChanged()">
+              <label class="form-label">
+                Titik LED Rak Pintar 
+                <span style="font-size: 0.74rem; color: #64748B; font-weight: normal;">(Opsional, khusus buku peraga IoT)</span>
+              </label>
+              <input type="number" id="bookLedSlot" class="form-control" min="1" max="108" placeholder="Slot 1 - 108 (Kosongkan jika di rak biasa)"
+                oninput="onLedSlotInputChanged()">
             </div>
             <div class="form-group">
               <label class="form-label">Jumlah Stok Buku (Unit) *</label>

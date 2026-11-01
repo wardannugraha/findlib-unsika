@@ -719,12 +719,16 @@ app.post('/api/books', async (req, res) => {
       is_demo, cover_url, cover_public_id, total_stock, available_stock
     } = req.body;
 
-    const slotNum = parseInt(led_slot, 10);
-    const finalRackId = (rack_id && rack_id.trim().length > 0) ? rack_id : getRackBlockForSlot(slotNum).rack_id;
+    const hasSlot = led_slot !== undefined && led_slot !== null && String(led_slot).trim() !== '' && !isNaN(parseInt(led_slot, 10));
+    const slotNum = hasSlot ? parseInt(led_slot, 10) : null;
+    let finalRackId = (rack_id && rack_id.trim().length > 0) ? rack_id : null;
+    if (!finalRackId && slotNum) {
+      finalRackId = getRackBlockForSlot(slotNum).rack_id;
+    }
 
-    if (!id || !title || !author || !category_id || !slotNum) {
+    if (!id || !title || !author || !category_id) {
       return res.status(400).json({
-        error: 'Mohon lengkapi data wajib: ID/Barcode, Judul, Penulis, Kategori, dan Titik LED.'
+        error: 'Mohon lengkapi data wajib: ID/Barcode, Judul, Penulis, dan Kategori.'
       });
     }
 
@@ -794,8 +798,12 @@ app.put('/api/books/:id', async (req, res) => {
     const isDemoBool = is_demo === true || is_demo === 'true';
     const prodiVal = prodi && prodi.trim().length > 0 ? prodi.trim() : null;
 
-    const slotNum = parseInt(led_slot, 10);
-    const finalRackId = (rack_id && rack_id.trim().length > 0) ? rack_id : getRackBlockForSlot(slotNum).rack_id;
+    const hasSlot = led_slot !== undefined && led_slot !== null && String(led_slot).trim() !== '' && !isNaN(parseInt(led_slot, 10));
+    const slotNum = hasSlot ? parseInt(led_slot, 10) : null;
+    let finalRackId = (rack_id && rack_id.trim().length > 0) ? rack_id : null;
+    if (!finalRackId && slotNum) {
+      finalRackId = getRackBlockForSlot(slotNum).rack_id;
+    }
 
     // Ambil public_id lama untuk pembersihan jika cover diganti
     const oldBookRes = await dbQuery('SELECT cover_public_id FROM books WHERE id = $1', [bookId]);
@@ -991,7 +999,28 @@ async function handleLocateBook(req, res) {
     const settings = await getAppSettings();
     const duration = parseInt(settings.led_duration_seconds || '15', 10);
     
-    // Alokasi blok fisik & warna secara dinamis berdasarkan slot LED
+    // Jika buku berada di rak konvensional / tidak memiliki slot LED IoT
+    if (!book.led_slot || parseInt(book.led_slot, 10) <= 0) {
+      const rackDesc = book.rack_name || 'Rak Koleksi Umum Perpustakaan';
+      return res.json({
+        success: true,
+        is_iot_enabled: false,
+        message: `Buku "${book.title}" tersimpan di ${rackDesc} (Rak Konvensional - tidak terhubung ke modul LED).`,
+        book: {
+          ...book,
+          rack_name: rackDesc,
+          color_hex: '#64748B'
+        },
+        data: {
+          ...book,
+          rack_name: rackDesc,
+          led_target: null,
+          color_hex: '#64748B'
+        }
+      });
+    }
+
+    // Alokasi blok fisik & warna secara dinamis berdasarkan slot LED IoT
     const slotBlock = getRackBlockForSlot(book.led_slot);
     const rLevel = slotBlock.level_number || book.level_number || 1;
     const rStart = slotBlock.led_start_index || book.led_start_index || 1;

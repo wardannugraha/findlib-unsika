@@ -996,7 +996,7 @@ async function loadAdminRacks() {
 
     const select = document.getElementById('bookRack');
     if (select) {
-      select.innerHTML = '<option value="">-- Pilih Blok Rak Fisik --</option>' + 
+      select.innerHTML = '<option value="">-- Tanpa Rak IoT (Rak Konvensional) --</option>' + 
         adminRacks.map(r => `<option value="${r.id}">${r.rack_name}</option>`).join('');
     }
   } catch (err) {
@@ -1066,8 +1066,10 @@ function renderAdminTable(books) {
           </span>
         </td>
         <td>
-          <div style="font-weight: 600;">${b.rack_name || 'Rak Utama'}</div>
-          <div style="font-size: 0.78rem; color: #0284C7; font-weight: 700;">Tingkat ${b.level_number || 1} &bull; LED #${b.led_slot}</div>
+          <div style="font-weight: 600;">${b.rack_name || 'Rak Reguler / Konvensional'}</div>
+          ${b.led_slot 
+            ? `<div style="font-size: 0.78rem; color: #0284C7; font-weight: 700;">Tingkat ${b.level_number || 1} &bull; LED #${b.led_slot}</div>` 
+            : `<div style="font-size: 0.75rem; color: #64748B;"><i class="fa-solid fa-ban" style="font-size: 0.7rem;"></i> Non-IoT (Tanpa LED)</div>`}
         </td>
         <td>
           <div style="font-weight: 700; color: #1E293B;">${b.available_stock || 1} dari ${b.total_stock || 1} Buku</div>
@@ -1077,8 +1079,8 @@ function renderAdminTable(books) {
         </td>
         <td>
           <div style="display: flex; gap: 6px;">
-            <button class="btn-secondary" style="padding: 6px 10px; font-size: 0.78rem;" title="Test Sinyal LED" onclick="testLocateBook('${b.id}')">
-              <i class="fa-solid fa-lightbulb" style="color: #F59E0B;"></i>
+            <button class="btn-secondary" style="padding: 6px 10px; font-size: 0.78rem;" title="${b.led_slot ? 'Test Sinyal LED' : 'Buku Non-IoT (Rak Konvensional)'}" onclick="testLocateBook('${b.id}')">
+              <i class="fa-solid fa-lightbulb" style="color: ${b.led_slot ? '#F59E0B' : '#94A3B8'};"></i>
             </button>
             <button class="btn-secondary" style="padding: 6px 10px; font-size: 0.78rem;" title="Edit Buku" onclick="openEditBookModal('${b.id}')">
               <i class="fa-solid fa-pen-to-square" style="color: #0284C7;"></i>
@@ -1235,7 +1237,11 @@ function onLedSlotInputChanged() {
 function selectVisualSlot(slotNumber) {
   const slotInput = document.getElementById('bookLedSlot');
   if (slotInput) {
-    slotInput.value = slotNumber;
+    if (parseInt(slotInput.value, 10) === slotNumber) {
+      slotInput.value = ''; // Klik ulang untuk membatalkan pilihan slot
+    } else {
+      slotInput.value = slotNumber;
+    }
     renderVisualSlotPicker();
   }
 }
@@ -1659,6 +1665,9 @@ async function handleSaveBook(e) {
   const prodiInput = document.getElementById('bookProdi');
   const prodiVal = prodiInput ? prodiInput.value.trim() : '';
 
+  const slotVal = document.getElementById('bookLedSlot').value.trim();
+  const rackVal = document.getElementById('bookRack').value;
+
   const payload = {
     id: document.getElementById('bookId').value.trim(),
     isbn: document.getElementById('bookIsbn').value.trim(),
@@ -1669,8 +1678,8 @@ async function handleSaveBook(e) {
     page_count: parseInt(document.getElementById('bookPages').value, 10) || null,
     category_id: categoryId,
     prodi: isCategorySkripsi(categoryId) ? prodiVal : null,
-    rack_id: document.getElementById('bookRack').value,
-    led_slot: parseInt(document.getElementById('bookLedSlot').value, 10),
+    rack_id: rackVal || null,
+    led_slot: slotVal ? parseInt(slotVal, 10) : null,
     is_demo: document.getElementById('bookIsDemo').checked,
     total_stock: parseInt(document.getElementById('bookStock').value, 10) || 1,
     cover_url: document.getElementById('bookCoverUrl').value.trim(),
@@ -1752,6 +1761,14 @@ async function testLocateBook(bookId) {
         title: 'Gagal Tes LED',
         text: result.error || 'Gagal mengirim sinyal tes LED.',
         icon: 'error'
+      });
+      return;
+    }
+    if (result.is_iot_enabled === false) {
+      showModalAlert({
+        title: 'Buku Non-IoT (Rak Konvensional)',
+        text: result.message || 'Buku ini tidak memiliki modul lampu LED di rak miniatur peraga.',
+        icon: 'info'
       });
       return;
     }

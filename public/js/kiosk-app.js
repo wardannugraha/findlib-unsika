@@ -652,9 +652,15 @@ async function loadKioskBooks(query = null) {
                 <button class="btn-secondary btn-card-detail" onclick="openKioskBookModal('${book.id}')">
                   <i class="fa-solid fa-circle-info"></i> Detail
                 </button>
-                <button class="btn-primary btn-card-locate" onclick="triggerLocateBook('${book.id}')">
-                  <i class="fa-solid fa-lightbulb"></i> Nyalakan
-                </button>
+                ${book.led_slot ? `
+                  <button class="btn-primary btn-card-locate" onclick="triggerLocateBook('${book.id}')">
+                    <i class="fa-solid fa-lightbulb"></i> Nyalakan
+                  </button>
+                ` : `
+                  <button class="btn-secondary" style="font-size: 0.78rem; opacity: 0.85;" onclick="openKioskBookModal('${book.id}')" title="Buku di Rak Konvensional">
+                    <i class="fa-solid fa-book-bookmark"></i> Rak Umum
+                  </button>
+                `}
               </div>
             </div>
           </div>
@@ -698,14 +704,25 @@ function openKioskBookModal(bookId) {
     </div>
 
     <!-- KIOSK RACK LOCATION INFO BOX (READ-ONLY CLEAN INFO) -->
-    <div style="background: #F0FDF4; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; border: 1.5px solid #BBF7D0;">
-      <h4 style="font-size: 0.9rem; color: #166534; margin-bottom: 4px;">
-        <i class="fa-solid fa-map-pin" style="color: #10B981;"></i> Posisi Buku di Rak Perpustakaan:
-      </h4>
-      <div style="font-size: 0.88rem; color: #15803D; font-weight: 600;">
-        ${book.rack_name || 'Rak Koleksi Utama'} &bull; Tingkat ${book.level_number || 1} &bull; <span style="color: #0284C7; font-weight: 800;">Slot LED #${book.led_slot}</span>
+    ${book.led_slot ? `
+      <div style="background: #F0FDF4; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; border: 1.5px solid #BBF7D0;">
+        <h4 style="font-size: 0.9rem; color: #166534; margin-bottom: 4px;">
+          <i class="fa-solid fa-map-pin" style="color: #10B981;"></i> Posisi Buku di Rak Pintar IoT:
+        </h4>
+        <div style="font-size: 0.88rem; color: #15803D; font-weight: 600;">
+          ${book.rack_name || 'Rak Pintar IoT'} &bull; Tingkat ${book.level_number || 1} &bull; <span style="color: #0284C7; font-weight: 800;">Slot LED #${book.led_slot}</span>
+        </div>
       </div>
-    </div>
+    ` : `
+      <div style="background: #F8FAFC; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; border: 1.5px solid #E2E8F0;">
+        <h4 style="font-size: 0.9rem; color: #334155; margin-bottom: 4px;">
+          <i class="fa-solid fa-book-bookmark" style="color: #64748B;"></i> Lokasi Fisik Buku:
+        </h4>
+        <div style="font-size: 0.88rem; color: #475569; font-weight: 600;">
+          ${book.rack_name || 'Rak Koleksi Umum Perpustakaan'} &bull; <span style="color: #64748B; font-weight: 600;">Rak Konvensional (Non-IoT)</span>
+        </div>
+      </div>
+    `}
 
     <div>
       <h4 style="font-size: 0.9rem; color: #0B192C; margin-bottom: 6px;"><i class="fa-solid fa-align-left"></i> Sinopsis / Deskripsi:</h4>
@@ -717,9 +734,15 @@ function openKioskBookModal(bookId) {
 
   modalFooter.innerHTML = `
     <button class="btn-secondary" onclick="closeKioskBookModal()">Tutup</button>
-    <button class="btn-primary" style="background: linear-gradient(135deg, #0284C7, #0369A1);" onclick="triggerLocateFromModal('${book.id}')">
-      <i class="fa-solid fa-lightbulb"></i> Cari & Nyalakan Lampu di Rak
-    </button>
+    ${book.led_slot ? `
+      <button class="btn-primary" style="background: linear-gradient(135deg, #0284C7, #0369A1);" onclick="triggerLocateFromModal('${book.id}')">
+        <i class="fa-solid fa-lightbulb"></i> Cari & Nyalakan Lampu di Rak
+      </button>
+    ` : `
+      <span style="font-size: 0.82rem; color: #64748B; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+        <i class="fa-solid fa-info-circle" style="color: #0284C7;"></i> Tersedia di Rak Fisik Reguler
+      </span>
+    `}
   `;
 
   document.getElementById('kioskBookDetailModal').classList.add('open');
@@ -765,6 +788,28 @@ async function triggerLocateBook(bookId) {
         });
       } else {
         alert('Gagal menyalakan rak: ' + (result.error || 'Unknown error'));
+      }
+      return;
+    }
+
+    // Jika buku berada di rak konvensional / Non-IoT
+    if (result.is_iot_enabled === false) {
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({
+          title: 'Buku di Rak Konvensional',
+          text: result.message || 'Buku ini berada di rak reguler perpustakaan (tidak terhubung ke modul lampu LED).',
+          icon: 'info',
+          confirmButtonText: 'Mengerti',
+          customClass: {
+            popup: 'libnav-popup',
+            title: 'libnav-popup-title',
+            htmlContainer: 'libnav-popup-body',
+            confirmButton: 'btn-swal-confirm btn-swal-primary'
+          },
+          buttonsStyling: false
+        });
+      } else {
+        alert(result.message);
       }
       return;
     }

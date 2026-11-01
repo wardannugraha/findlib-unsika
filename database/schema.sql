@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS books (
     synopsis TEXT,                        -- Sinopsis / Ringkasan Buku
     category_id VARCHAR(50) REFERENCES categories(id) ON DELETE RESTRICT,
     prodi VARCHAR(100),                   -- Program Studi (khusus Skripsi / Tugas Akhir)
-    rack_id VARCHAR(50) REFERENCES racks(id) ON DELETE CASCADE,
-    led_slot INT NOT NULL,                -- Titik spesifik lampu LED WS2812B
+    rack_id VARCHAR(50) REFERENCES racks(id) ON DELETE SET NULL,
+    led_slot INT,                         -- Titik spesifik lampu LED WS2812B (Opsional, khusus rak pintar IoT)
     cover_url TEXT,                       -- Link URL Gambar Sampul
     cover_public_id TEXT,                 -- Cloudinary Public ID untuk penghapusan otomatis
     total_stock INT DEFAULT 1,            -- Total Buku Fisik
