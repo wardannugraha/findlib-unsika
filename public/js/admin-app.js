@@ -1058,7 +1058,10 @@ function renderAdminTable(books) {
         <td>
           <div style="font-weight: 700; color: #0B192C;">${b.title}</div>
           <div style="font-size: 0.8rem; color: #64748B;">Penulis: ${b.author} ${b.publish_year ? `(${b.publish_year})` : ''}</div>
-          ${b.prodi ? `<div style="margin-top: 5px;"><span class="badge-prodi"><i class="fa-solid fa-graduation-cap"></i> ${b.prodi}</span></div>` : ''}
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; align-items: center;">
+            ${b.prodi ? `<span class="badge-prodi"><i class="fa-solid fa-graduation-cap"></i> ${b.prodi}</span>` : ''}
+            ${b.digital_url ? `<a href="${escapeHtml(b.digital_url)}" target="_blank" rel="noopener noreferrer" class="badge-digital-inline" title="Buka tautan berkas digital / e-book"><i class="fa-solid fa-file-pdf"></i> E-Book / Dokumen <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.65rem;"></i></a>` : ''}
+          </div>
         </td>
         <td>
           <span class="table-badge-category" style="background-color: ${b.color_hex || '#0284C7'};">
@@ -1079,6 +1082,11 @@ function renderAdminTable(books) {
         </td>
         <td>
           <div style="display: flex; gap: 6px;">
+            ${b.digital_url ? `
+              <a href="${escapeHtml(b.digital_url)}" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="padding: 6px 10px; font-size: 0.78rem; text-decoration: none; display: inline-flex; align-items: center;" title="Buka Berkas Digital / E-Book">
+                <i class="fa-solid fa-file-pdf" style="color: #EF4444;"></i>
+              </a>
+            ` : ''}
             <button class="btn-secondary" style="padding: 6px 10px; font-size: 0.78rem;" title="${b.led_slot ? 'Test Sinyal LED' : 'Buku Non-IoT (Rak Konvensional)'}" onclick="testLocateBook('${b.id}')">
               <i class="fa-solid fa-lightbulb" style="color: ${b.led_slot ? '#F59E0B' : '#94A3B8'};"></i>
             </button>
@@ -1585,6 +1593,8 @@ function openAddBookModal() {
   document.getElementById('bookProdi').value = '';
   const searchInput = document.getElementById('prodiSearchInput');
   if (searchInput) searchInput.value = '';
+  const digiInput = document.getElementById('bookDigitalUrl');
+  if (digiInput) digiInput.value = '';
   onAdminCategoryChange();
 
   // Reset Cover Upload State
@@ -1624,6 +1634,8 @@ function openEditBookModal(bookId) {
   document.getElementById('bookStock').value = book.total_stock || 1;
   document.getElementById('bookCoverUrl').value = book.cover_url || '';
   document.getElementById('bookCoverPublicId').value = book.cover_public_id || '';
+  const digiInput = document.getElementById('bookDigitalUrl');
+  if (digiInput) digiInput.value = book.digital_url || '';
   document.getElementById('bookSynopsis').value = book.synopsis || '';
   document.getElementById('bookIsDemo').checked = (book.is_demo === true);
 
@@ -1667,6 +1679,8 @@ async function handleSaveBook(e) {
 
   const slotVal = document.getElementById('bookLedSlot').value.trim();
   const rackVal = document.getElementById('bookRack').value;
+  const digiInput = document.getElementById('bookDigitalUrl');
+  const digiVal = digiInput ? digiInput.value.trim() : '';
 
   const payload = {
     id: document.getElementById('bookId').value.trim(),
@@ -1684,6 +1698,7 @@ async function handleSaveBook(e) {
     total_stock: parseInt(document.getElementById('bookStock').value, 10) || 1,
     cover_url: document.getElementById('bookCoverUrl').value.trim(),
     cover_public_id: document.getElementById('bookCoverPublicId').value.trim(),
+    digital_url: digiVal || null,
     synopsis: document.getElementById('bookSynopsis').value.trim()
   };
 

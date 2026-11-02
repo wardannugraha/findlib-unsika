@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS books (
     led_slot INT,                         -- Titik spesifik lampu LED WS2812B (Opsional, khusus rak pintar IoT)
     cover_url TEXT,                       -- Link URL Gambar Sampul
     cover_public_id TEXT,                 -- Cloudinary Public ID untuk penghapusan otomatis
+    digital_url TEXT,                     -- Link URL Berkas Digital / E-Book / Jurnal / Drive (Opsional)
     total_stock INT DEFAULT 1,            -- Total Buku Fisik
     available_stock INT DEFAULT 1,        -- Jumlah Buku yang Tersedia
     borrowed_count INT DEFAULT 0,         -- Jumlah Buku yang Sedang Dipinjam

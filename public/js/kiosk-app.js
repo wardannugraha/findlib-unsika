@@ -626,6 +626,11 @@ async function loadKioskBooks(query = null) {
             <span class="badge-category" style="background-color: ${book.color_hex || '#0284C7'};">
               ${book.category_name || 'Umum'}
             </span>
+            ${book.digital_url ? `
+              <a href="${escapeHtml(book.digital_url)}" target="_blank" rel="noopener noreferrer" class="badge-digital-pill" onclick="event.stopPropagation()" title="Buka Versi Digital / E-Book">
+                <i class="fa-solid fa-file-pdf"></i> E-Book
+              </a>
+            ` : ''}
           </div>
           <div class="book-info">
             <div class="book-code">${book.id} ${book.isbn ? `• ${book.isbn}` : ''}</div>
@@ -652,6 +657,11 @@ async function loadKioskBooks(query = null) {
                 <button class="btn-secondary btn-card-detail" onclick="openKioskBookModal('${book.id}')">
                   <i class="fa-solid fa-circle-info"></i> Detail
                 </button>
+                ${book.digital_url ? `
+                  <a href="${escapeHtml(book.digital_url)}" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="padding: 6px 9px; font-size: 0.76rem; text-decoration: none; color: #0284C7; border-color: #BAE6FD; background: #F0F9FF; display: inline-flex; align-items: center; gap: 4px;" title="Akses Versi Digital / E-Book">
+                    <i class="fa-solid fa-file-pdf" style="color: #EF4444;"></i> E-Book
+                  </a>
+                ` : ''}
                 ${book.led_slot ? `
                   <button class="btn-primary btn-card-locate" onclick="triggerLocateBook('${book.id}')">
                     <i class="fa-solid fa-lightbulb"></i> Nyalakan
@@ -724,6 +734,28 @@ function openKioskBookModal(bookId) {
       </div>
     `}
 
+    <!-- BERKAS DIGITAL / E-BOOK (OPSIONAL) -->
+    ${book.digital_url ? `
+      <div class="digital-doc-banner">
+        <div class="digital-doc-banner-info">
+          <div class="digital-doc-icon-wrap">
+            <i class="fa-solid fa-file-pdf"></i>
+          </div>
+          <div>
+            <h4 class="digital-doc-banner-title">
+              <i class="fa-solid fa-cloud-arrow-down" style="color: #0284C7;"></i> Berkas Digital / E-Book Tersedia
+            </h4>
+            <p class="digital-doc-banner-desc">
+              Buku atau skripsi ini memiliki berkas digital yang dapat dibaca langsung (Google Drive, E-Journal, Repository).
+            </p>
+          </div>
+        </div>
+        <a href="${escapeHtml(book.digital_url)}" target="_blank" rel="noopener noreferrer" class="btn-digital-link">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Tautan Digital
+        </a>
+      </div>
+    ` : ''}
+
     <div>
       <h4 style="font-size: 0.9rem; color: #0B192C; margin-bottom: 6px;"><i class="fa-solid fa-align-left"></i> Sinopsis / Deskripsi:</h4>
       <p style="font-size: 0.88rem; color: #475569; line-height: 1.6; text-align: justify;">
@@ -734,6 +766,11 @@ function openKioskBookModal(bookId) {
 
   modalFooter.innerHTML = `
     <button class="btn-secondary" onclick="closeKioskBookModal()">Tutup</button>
+    ${book.digital_url ? `
+      <a href="${escapeHtml(book.digital_url)}" target="_blank" rel="noopener noreferrer" class="btn-digital-link" style="padding: 9px 15px; font-size: 0.82rem;">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i> Baca Versi Digital
+      </a>
+    ` : ''}
     ${book.led_slot ? `
       <button class="btn-primary" style="background: linear-gradient(135deg, #0284C7, #0369A1);" onclick="triggerLocateFromModal('${book.id}')">
         <i class="fa-solid fa-lightbulb"></i> Cari & Nyalakan Lampu di Rak

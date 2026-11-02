@@ -548,6 +548,11 @@ async function loadBooks() {
             <span class="badge-category" style="background-color: ${book.color_hex || '#0284C7'};">
               ${escapeHtml(book.category_name || 'Umum')}
             </span>
+            ${book.digital_url ? `
+              <a href="${escapeHtml(book.digital_url)}" target="_blank" rel="noopener noreferrer" class="badge-digital-pill" onclick="event.stopPropagation()" title="Buka Versi Digital / E-Book">
+                <i class="fa-solid fa-file-pdf"></i> E-Book
+              </a>
+            ` : ''}
           </div>
           <div class="book-info">
             <div class="book-code">${escapeHtml(book.id)} ${book.isbn ? `• ${escapeHtml(book.isbn)}` : ''}</div>
@@ -570,9 +575,16 @@ async function loadBooks() {
                 <span class="stock-label"><i class="fa-solid fa-cubes-stacked"></i> Stok:</span>
                 ${stockBadge}
               </div>
-              <button class="btn-secondary btn-card-detail-full" onclick="openBookModal('${escapeHtml(book.id)}')">
-                <i class="fa-solid fa-circle-info"></i> Detail Buku
-              </button>
+              <div style="display: flex; gap: 8px; width: 100%;">
+                <button class="btn-secondary" style="flex: 1; justify-content: center; font-size: 0.82rem;" onclick="openBookModal('${escapeHtml(book.id)}')">
+                  <i class="fa-solid fa-circle-info"></i> Detail Buku
+                </button>
+                ${book.digital_url ? `
+                  <a href="${escapeHtml(book.digital_url)}" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; text-decoration: none; color: #0284C7; border-color: #BAE6FD; background: #F0F9FF; display: inline-flex; align-items: center; gap: 5px;" title="Akses Versi Digital / E-Book">
+                    <i class="fa-solid fa-file-pdf" style="color: #EF4444;"></i> E-Book
+                  </a>
+                ` : ''}
+              </div>
             </div>
           </div>
         </div>
@@ -657,6 +669,28 @@ function openBookModal(bookId) {
       ` : ''}
     </div>
 
+    <!-- BERKAS DIGITAL / E-BOOK (OPSIONAL) -->
+    ${book.digital_url ? `
+      <div class="digital-doc-banner">
+        <div class="digital-doc-banner-info">
+          <div class="digital-doc-icon-wrap">
+            <i class="fa-solid fa-file-pdf"></i>
+          </div>
+          <div>
+            <h4 class="digital-doc-banner-title">
+              <i class="fa-solid fa-cloud-arrow-down" style="color: #0284C7;"></i> Berkas Digital / E-Book Tersedia
+            </h4>
+            <p class="digital-doc-banner-desc">
+              Buku atau skripsi ini memiliki softcopy digital yang dapat diakses secara online (Google Drive, E-Journal, Repository).
+            </p>
+          </div>
+        </div>
+        <a href="${escapeHtml(book.digital_url)}" target="_blank" rel="noopener noreferrer" class="btn-digital-link">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Tautan Digital
+        </a>
+      </div>
+    ` : ''}
+
     <div>
       <h4 style="font-size: 0.9rem; color: #0B192C; margin-bottom: 6px;"><i class="fa-solid fa-align-left"></i> Sinopsis / Deskripsi:</h4>
       <p style="font-size: 0.88rem; color: #475569; line-height: 1.6; text-align: justify;">
@@ -664,6 +698,18 @@ function openBookModal(bookId) {
       </p>
     </div>
   `;
+
+  const modalFooter = document.getElementById('modalBookFooter');
+  if (modalFooter) {
+    modalFooter.innerHTML = `
+      <button class="btn-secondary" onclick="closeBookModal()">Tutup</button>
+      ${book.digital_url ? `
+        <a href="${escapeHtml(book.digital_url)}" target="_blank" rel="noopener noreferrer" class="btn-digital-link" style="padding: 9px 15px; font-size: 0.82rem;">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> Baca Versi Digital
+        </a>
+      ` : ''}
+    `;
+  }
 
   const modal = document.getElementById('bookDetailModal');
   if (modal) modal.classList.add('open');

@@ -3667,6 +3667,168 @@ div.swal2-container.swal2-top-right .swal2-timer-progress-bar {
   color: var(--primary-900);
 }
 
+/* ==========================================================================
+   DIGITAL / E-BOOK STYLES (BADGES, BANNERS & ACTION BUTTONS)
+   ========================================================================== */
+.badge-digital-pill {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #38BDF8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.badge-digital-pill:hover {
+  background: #0284C7;
+  color: #FFFFFF;
+  border-color: #38BDF8;
+  transform: translateY(-1px);
+}
+
+.badge-digital-pill i {
+  color: #F87171;
+  font-size: 0.78rem;
+}
+
+.book-card.compact .badge-digital-pill {
+  top: 8px;
+  right: 8px;
+  padding: 2px 7px;
+  font-size: 0.65rem;
+}
+
+@media (max-width: 640px) {
+  .badge-digital-pill {
+    top: 6px;
+    right: 6px;
+    padding: 2px 6px;
+    font-size: 0.62rem;
+  }
+}
+
+.badge-digital-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #F0F9FF;
+  color: #0369A1;
+  border: 1px solid #BAE6FD;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.badge-digital-inline:hover {
+  background: #E0F2FE;
+  color: #0284C7;
+  border-color: #7DD3FC;
+}
+
+.badge-digital-inline i {
+  color: #EF4444;
+  font-size: 0.75rem;
+}
+
+.digital-doc-banner {
+  background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%);
+  border: 1.5px solid #BAE6FD;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.digital-doc-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.digital-doc-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #FFFFFF;
+  color: #EF4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  box-shadow: 0 2px 4px rgba(2, 132, 199, 0.08);
+  flex-shrink: 0;
+}
+
+.digital-doc-banner-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0369A1;
+  margin: 0 0 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.digital-doc-banner-desc {
+  font-size: 0.78rem;
+  color: #0284C7;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.btn-digital-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+  color: #FFFFFF !important;
+  font-weight: 700;
+  font-size: 0.84rem;
+  padding: 9px 16px;
+  border-radius: 8px;
+  text-decoration: none;
+  border: none;
+  box-shadow: 0 2px 4px rgba(2, 132, 199, 0.25);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-digital-link:hover {
+  background: linear-gradient(135deg, #0369A1 0%, #075985 100%);
+  box-shadow: 0 4px 10px rgba(2, 132, 199, 0.35);
+  transform: translateY(-1px);
+  color: #FFFFFF !important;
+}
+
+.btn-digital-link i {
+  font-size: 0.85rem;
+}
+
+
 
 
 

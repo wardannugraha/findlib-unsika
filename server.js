@@ -120,6 +120,7 @@ async function initPostgresDatabase() {
       await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS is_demo BOOLEAN DEFAULT FALSE;`);
       await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS prodi VARCHAR(100);`);
       await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS cover_public_id TEXT;`);
+      await client.query(`ALTER TABLE books ADD COLUMN IF NOT EXISTS digital_url TEXT;`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_books_is_demo ON books(is_demo);`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_books_prodi ON books(prodi);`);
       await client.query(`
@@ -716,7 +717,7 @@ app.post('/api/books', async (req, res) => {
     const {
       id, isbn, title, author, publisher, publish_year,
       page_count, synopsis, category_id, prodi, rack_id, led_slot,
-      is_demo, cover_url, cover_public_id, total_stock, available_stock
+      is_demo, cover_url, cover_public_id, digital_url, total_stock, available_stock
     } = req.body;
 
     const hasSlot = led_slot !== undefined && led_slot !== null && String(led_slot).trim() !== '' && !isNaN(parseInt(led_slot, 10));
@@ -740,6 +741,10 @@ app.post('/api/books', async (req, res) => {
       ? cover_public_id.trim()
       : null;
 
+    const cleanDigitalUrl = digital_url && digital_url.trim().length > 0
+      ? digital_url.trim()
+      : null;
+
     const stockTotal = parseInt(total_stock || 1, 10);
     const stockAvailable = available_stock !== undefined ? parseInt(available_stock, 10) : stockTotal;
     const stockBorrowed = stockTotal - stockAvailable;
@@ -751,16 +756,16 @@ app.post('/api/books', async (req, res) => {
       INSERT INTO books (
         id, isbn, title, author, publisher, publish_year, page_count,
         synopsis, category_id, prodi, rack_id, led_slot, is_demo, cover_url, cover_public_id,
-        total_stock, available_stock, borrowed_count, status
+        digital_url, total_stock, available_stock, borrowed_count, status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *
     `, [
       id, isbn || null, title, author, publisher || null,
       publish_year ? parseInt(publish_year, 10) : null,
       page_count ? parseInt(page_count, 10) : null,
       synopsis || '', category_id, prodiVal, finalRackId, slotNum,
-      isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus
+      isDemoBool, defaultCover, cleanPublicId, cleanDigitalUrl, stockTotal, stockAvailable, stockBorrowed, bookStatus
     ]);
 
     return res.status(201).json({ success: true, book: result.rows[0] });
@@ -780,7 +785,7 @@ app.put('/api/books/:id', async (req, res) => {
     const {
       isbn, title, author, publisher, publish_year,
       page_count, synopsis, category_id, prodi, rack_id, led_slot,
-      is_demo, cover_url, cover_public_id, total_stock, available_stock
+      is_demo, cover_url, cover_public_id, digital_url, total_stock, available_stock
     } = req.body;
 
     const defaultCover = cover_url && cover_url.trim().length > 0
@@ -789,6 +794,10 @@ app.put('/api/books/:id', async (req, res) => {
 
     const cleanPublicId = cover_public_id && cover_public_id.trim().length > 0
       ? cover_public_id.trim()
+      : null;
+
+    const cleanDigitalUrl = digital_url && digital_url.trim().length > 0
+      ? digital_url.trim()
       : null;
 
     const stockTotal = parseInt(total_stock || 1, 10);
@@ -814,16 +823,16 @@ app.put('/api/books/:id', async (req, res) => {
         isbn = $1, title = $2, author = $3, publisher = $4,
         publish_year = $5, page_count = $6, synopsis = $7,
         category_id = $8, prodi = $9, rack_id = $10, led_slot = $11,
-        is_demo = $12, cover_url = $13, cover_public_id = $14, total_stock = $15, available_stock = $16,
-        borrowed_count = $17, status = $18, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $19
+        is_demo = $12, cover_url = $13, cover_public_id = $14, digital_url = $15, total_stock = $16, available_stock = $17,
+        borrowed_count = $18, status = $19, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $20
       RETURNING *
     `, [
       isbn || null, title, author, publisher || null,
       publish_year ? parseInt(publish_year, 10) : null,
       page_count ? parseInt(page_count, 10) : null,
       synopsis || '', category_id, prodiVal, finalRackId, slotNum,
-      isDemoBool, defaultCover, cleanPublicId, stockTotal, stockAvailable, stockBorrowed, bookStatus,
+      isDemoBool, defaultCover, cleanPublicId, cleanDigitalUrl, stockTotal, stockAvailable, stockBorrowed, bookStatus,
       bookId
     ]);
 
